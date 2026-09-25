@@ -6,8 +6,39 @@
 	objectVersion = 110;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		5D1DE0000000000000000006 /* StrideKit in Frameworks */ = {isa = PBXBuildFile; productRef = 5D1DE0000000000000000002 /* StrideKit */; };
+		5D1DE0000000000000000007 /* StrideUI in Frameworks */ = {isa = PBXBuildFile; productRef = 5D1DE0000000000000000003 /* StrideUI */; };
+		5D1DE0000000000000000008 /* StrideKit in Frameworks */ = {isa = PBXBuildFile; productRef = 5D1DE0000000000000000004 /* StrideKit */; };
+		5D1DE0000000000000000009 /* StrideUI in Frameworks */ = {isa = PBXBuildFile; productRef = 5D1DE0000000000000000005 /* StrideUI */; };
+		8372DA773065F74800F97B11 /* StrideWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 8372DA6D3065F74500F97B11 /* StrideWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		8372DA753065F74800F97B11 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8372DA533065F68700F97B11 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8372DA6C3065F74500F97B11;
+			remoteInfo = StrideWatch;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		8372DA7B3065F74800F97B11 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolder = Product;
+			files = (
+				8372DA773065F74800F97B11 /* StrideWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		8372DA5B3065F68700F97B11 /* Stride.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Stride.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8372DA6D3065F74500F97B11 /* StrideWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StrideWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -16,12 +47,26 @@
 			path = Stride;
 			sourceTree = "<group>";
 		};
+		8372DA6E3065F74500F97B11 /* StrideWatch */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = StrideWatch;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		8372DA583065F68700F97B11 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				5D1DE0000000000000000006 /* StrideKit in Frameworks */,
+				5D1DE0000000000000000007 /* StrideUI in Frameworks */,
+			);
+		};
+		8372DA6A3065F74500F97B11 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				5D1DE0000000000000000008 /* StrideKit in Frameworks */,
+				5D1DE0000000000000000009 /* StrideUI in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -31,6 +76,7 @@
 			isa = PBXGroup;
 			children = (
 				8372DA5D3065F68700F97B11 /* Stride */,
+				8372DA6E3065F74500F97B11 /* StrideWatch */,
 				8372DA5C3065F68700F97B11 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -39,6 +85,7 @@
 			isa = PBXGroup;
 			children = (
 				8372DA5B3065F68700F97B11 /* Stride.app */,
+				8372DA6D3065F74500F97B11 /* StrideWatch.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -53,15 +100,45 @@
 				8372DA573065F68700F97B11 /* Sources */,
 				8372DA583065F68700F97B11 /* Frameworks */,
 				8372DA593065F68700F97B11 /* Resources */,
+				8372DA7B3065F74800F97B11 /* Embed Watch Content */,
 			);
 			buildRules = (
+			);
+			dependencies = (
+				8372DA763065F74800F97B11 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				8372DA5D3065F68700F97B11 /* Stride */,
 			);
 			name = Stride;
+			packageProductDependencies = (
+				5D1DE0000000000000000002 /* StrideKit */,
+				5D1DE0000000000000000003 /* StrideUI */,
+			);
 			productName = Stride;
 			productReference = 8372DA5B3065F68700F97B11 /* Stride.app */;
+			productType = "com.apple.product-type.application";
+		};
+		8372DA6C3065F74500F97B11 /* StrideWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8372DA783065F74800F97B11 /* Build configuration list for PBXNativeTarget "StrideWatch" */;
+			buildPhases = (
+				8372DA693065F74500F97B11 /* Sources */,
+				8372DA6A3065F74500F97B11 /* Frameworks */,
+				8372DA6B3065F74500F97B11 /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				8372DA6E3065F74500F97B11 /* StrideWatch */,
+			);
+			name = StrideWatch;
+			packageProductDependencies = (
+				5D1DE0000000000000000004 /* StrideKit */,
+				5D1DE0000000000000000005 /* StrideUI */,
+			);
+			productName = StrideWatch;
+			productReference = 8372DA6D3065F74500F97B11 /* StrideWatch.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -77,6 +154,9 @@
 					8372DA5A3065F68700F97B11 = {
 						CreatedOnToolsVersion = 27.0;
 					};
+					8372DA6C3065F74500F97B11 = {
+						CreatedOnToolsVersion = 27.0;
+					};
 				};
 			};
 			buildConfigurationList = 8372DA563065F68700F97B11 /* Build configuration list for PBXProject "Stride" */;
@@ -88,18 +168,27 @@
 			);
 			mainGroup = 8372DA523065F68700F97B11;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				5D1DE0000000000000000001 /* XCLocalSwiftPackageReference "../StrideKit" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 8372DA5C3065F68700F97B11 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				8372DA5A3065F68700F97B11 /* Stride */,
+				8372DA6C3065F74500F97B11 /* StrideWatch */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		8372DA593065F68700F97B11 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		8372DA6B3065F74500F97B11 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
 			);
@@ -112,7 +201,20 @@
 			files = (
 			);
 		};
+		8372DA693065F74500F97B11 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		8372DA763065F74800F97B11 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8372DA6C3065F74500F97B11 /* StrideWatch */;
+			targetProxy = 8372DA753065F74800F97B11 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		8372DA643065F68900F97B11 /* Debug configuration for PBXProject "Stride" */ = {
@@ -239,39 +341,31 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 968FPR7Y35;
-				ENABLE_APP_SANDBOX = YES;
-				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
-				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
-				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
-				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
-				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				INFOPLIST_KEY_CFBundleDisplayName = Stride;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 27.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = alexandrejunior.Stride;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				REGISTER_APP_GROUPS = YES;
-				SDKROOT = auto;
+				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2,7";
-				XROS_DEPLOYMENT_TARGET = 27.0;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -283,39 +377,98 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 968FPR7Y35;
-				ENABLE_APP_SANDBOX = YES;
-				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
-				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
-				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
-				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
-				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				INFOPLIST_KEY_CFBundleDisplayName = Stride;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 27.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = alexandrejunior.Stride;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				REGISTER_APP_GROUPS = YES;
-				SDKROOT = auto;
+				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2,7";
-				XROS_DEPLOYMENT_TARGET = 27.0;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		8372DA793065F74800F97B11 /* Debug configuration for PBXNativeTarget "StrideWatch" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 968FPR7Y35;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Stride;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = alexandrejunior.Stride;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = alexandrejunior.Stride.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+			};
+			name = Debug;
+		};
+		8372DA7A3065F74800F97B11 /* Release configuration for PBXNativeTarget "StrideWatch" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 968FPR7Y35;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Stride;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = alexandrejunior.Stride;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = alexandrejunior.Stride.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
 			};
 			name = Release;
 		};
@@ -338,7 +491,45 @@
 			);
 			defaultConfigurationName = Release;
 		};
+		8372DA783065F74800F97B11 /* Build configuration list for PBXNativeTarget "StrideWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8372DA793065F74800F97B11 /* Debug configuration for PBXNativeTarget "StrideWatch" */,
+				8372DA7A3065F74800F97B11 /* Release configuration for PBXNativeTarget "StrideWatch" */,
+			);
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		5D1DE0000000000000000001 /* XCLocalSwiftPackageReference "../StrideKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../StrideKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		5D1DE0000000000000000002 /* StrideKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5D1DE0000000000000000001 /* XCLocalSwiftPackageReference "../StrideKit" */;
+			productName = StrideKit;
+		};
+		5D1DE0000000000000000003 /* StrideUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5D1DE0000000000000000001 /* XCLocalSwiftPackageReference "../StrideKit" */;
+			productName = StrideUI;
+		};
+		5D1DE0000000000000000004 /* StrideKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5D1DE0000000000000000001 /* XCLocalSwiftPackageReference "../StrideKit" */;
+			productName = StrideKit;
+		};
+		5D1DE0000000000000000005 /* StrideUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5D1DE0000000000000000001 /* XCLocalSwiftPackageReference "../StrideKit" */;
+			productName = StrideUI;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 8372DA533065F68700F97B11 /* Project object */;
 	validationLevel = 1;
