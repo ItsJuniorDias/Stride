@@ -30,6 +30,9 @@ public enum HeartRateZone: Int, CaseIterable, Codable, Comparable, Sendable {
         return allCases.last { fraction >= $0.lowerBound }
     }
 
+    /// Used until the runner sets their own maximum heart rate.
+    public static let defaultMaxHeartRate: Double = 190
+
     /// Estimated max heart rate (Tanaka: 208 − 0.7 × age).
     public static func estimatedMaxHeartRate(age: Int) -> Double {
         208 - 0.7 * Double(age)

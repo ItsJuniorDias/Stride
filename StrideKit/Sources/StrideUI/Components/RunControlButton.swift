@@ -17,6 +17,7 @@ public struct RunControlButton: View {
 
     let kind: Kind
     let action: () -> Void
+    @State private var taps = 0
 
     public init(_ kind: Kind, action: @escaping () -> Void) {
         self.kind = kind
@@ -24,7 +25,10 @@ public struct RunControlButton: View {
     }
 
     public var body: some View {
-        Button(action: action) {
+        Button {
+            taps += 1
+            action()
+        } label: {
             ZStack {
                 Circle().fill(kind == .pause ? Color.ink : Color.track)
                 label.foregroundStyle(kind == .pause ? Color.surface : Color.onTrack)
@@ -33,7 +37,7 @@ public struct RunControlButton: View {
         }
         .buttonStyle(PressScaleButtonStyle())
         .accessibilityLabel(kind.accessibilityLabel)
-        .sensoryFeedback(.impact(weight: .medium), trigger: kind)
+        .sensoryFeedback(.impact(weight: .medium), trigger: taps)
     }
 
     @ViewBuilder private var label: some View {

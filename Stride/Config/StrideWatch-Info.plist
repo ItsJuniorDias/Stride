@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Stride reads your heart rate during runs to show your live effort zone.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Stride saves your runs, with route and heart rate, to Apple Health.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Stride uses GPS to map your route and measure distance on Apple Watch.</string>
+	<key>WKBackgroundModes</key>
+	<array>
+		<string>workout-processing</string>
+	</array>
+</dict>
+</plist>
