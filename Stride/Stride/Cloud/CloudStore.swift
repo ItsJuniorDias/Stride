@@ -3,6 +3,7 @@ import SwiftData
 import CoreData
 import CloudKit
 import Security
+import CryptoKit
 import StrideKit
 
 /// The database, synced across the runner's devices with their private iCloud database.
@@ -54,7 +55,10 @@ enum CloudStore {
         guard let container = try? ModelContainer(for: schema, configurations: configurations) else { return }
         let context = ModelContext(container)
         let runs = (try? context.fetch(FetchDescriptor<Run>())) ?? []
+        let device = deviceID
         for run in runs {
+            // Recorded here before runs remembered their device: this iPhone saves them to Health.
+            if run.originDevice == nil { run.originDevice = device }
             let route = run.route
             let hasRouteHeartRate = route.contains { $0.heartRate != nil }
             guard run.averageHeartRate != nil || run.zoneData != nil || hasRouteHeartRate else { continue }
@@ -131,10 +135,16 @@ final class SettingsSync {
     private var observers: [NSObjectProtocol] = []
     /// Set while copying from iCloud, so the copy isn't sent straight back.
     private var isPulling = false
+    /// Friends and codes belong to an iCloud account: they only sync once it's known which one this
+    /// is, and are dropped if it's not the account they came from (even if it changed while Stride
+    /// wasn't running).
+    private var accountVerified = false
+    private static let accountHashKey = "settingsSyncAccount"
 
     static let keys = [
+        // Not weight or max heart rate: they can come from Apple Health, and health data stays out of iCloud.
         StrideSettings.unitSystem, StrideSettings.userName, StrideSettings.weeklyGoal, StrideSettings.yearlyGoal,
-        StrideSettings.weightKg, StrideSettings.maxHeartRate, StrideSettings.voiceCoach, StrideSettings.autoPause,
+        StrideSettings.voiceCoach, StrideSettings.autoPause,
         StrideSettings.voiceInterval, StrideSettings.voiceIncludePace, StrideSettings.voiceIncludeTime,
         StrideSettings.targetPace, StrideSettings.activePlanID, StrideSettings.completedPlanSessions,
         StrideSettings.shareWithFriends, StrideSettings.friendCode, StrideSettings.friendCodes,
@@ -157,11 +167,7 @@ final class SettingsSync {
             let reason = note.userInfo?[NSUbiquitousKeyValueStoreChangeReasonKey] as? Int
             MainActor.assumeIsolated {
                 if reason == NSUbiquitousKeyValueStoreAccountChange {
-                    // Another iCloud account: this device's friends belong to the previous one.
-                    SettingsSync.shared.isPulling = true
-                    Self.accountKeys.forEach(UserDefaults.standard.removeObject(forKey:))
-                    SettingsSync.shared.isPulling = false
-                    SettingsSync.shared.pull(nil)
+                    SettingsSync.shared.accountChanged()
                 } else {
                     SettingsSync.shared.pull(changed)
                 }
@@ -172,9 +178,38 @@ final class SettingsSync {
         ) { _ in
             MainActor.assumeIsolated { SettingsSync.shared.push() }
         })
+        observers.append(NotificationCenter.default.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { SettingsSync.shared.accountChanged() }
+        })
         store.synchronize()
-        // A new device takes what's in iCloud; values only this device has go up.
-        pull(nil)
+        // A new device takes what's in iCloud; values only this device has go up. Account-bound keys
+        // wait for the account check.
+        pull(Self.keys.filter { !Self.accountKeys.contains($0) })
+        push()
+        Task { await verifyAccount() }
+    }
+
+    private func accountChanged() {
+        accountVerified = false
+        Task { await verifyAccount() }
+    }
+
+    /// Works out which iCloud account this is. A different one than the friends on this device came
+    /// from: those are dropped before anything syncs. No account: they stay local.
+    private func verifyAccount() async {
+        guard let id = try? await CKContainer(identifier: CloudStore.containerID).userRecordID() else { return }
+        let hash = SHA256.hash(data: Data(id.recordName.utf8)).map { String(format: "%02x", $0) }.joined()
+        let defaults = UserDefaults.standard
+        let stored = defaults.string(forKey: Self.accountHashKey)
+        let hasLocal = Self.accountKeys.contains { defaults.object(forKey: $0) != nil }
+        if stored != hash, stored != nil || hasLocal {
+            isPulling = true
+            Self.accountKeys.forEach(defaults.removeObject(forKey:))
+            isPulling = false
+        }
+        defaults.set(hash, forKey: Self.accountHashKey)
+        accountVerified = true
+        pull(Self.accountKeys)
         push()
     }
 
@@ -183,14 +218,8 @@ final class SettingsSync {
         let defaults = UserDefaults.standard
         isPulling = true
         defer { isPulling = false }
-        for key in keys ?? Self.keys where Self.keys.contains(key) {
-            guard var value = store.object(forKey: key) else { continue }
-            // Plan sessions only ever get completed: keep the ones done on either device.
-            if key == StrideSettings.completedPlanSessions, let cloud = value as? String {
-                let local = defaults.string(forKey: key) ?? ""
-                let merged = Set((cloud + "," + local).split(separator: ",").map(String.init).filter { !$0.isEmpty })
-                value = merged.sorted().joined(separator: ",")
-            }
+        for key in keys ?? Self.keys where Self.keys.contains(key) && (accountVerified || !Self.accountKeys.contains(key)) {
+            guard let value = store.object(forKey: key) else { continue }
             if !Self.equal(defaults.object(forKey: key), value) { defaults.set(value, forKey: key) }
         }
     }
@@ -199,7 +228,7 @@ final class SettingsSync {
     private func push() {
         guard !isPulling else { return }
         let defaults = UserDefaults.standard
-        for key in Self.keys {
+        for key in Self.keys where accountVerified || !Self.accountKeys.contains(key) {
             guard let value = defaults.object(forKey: key) else { continue }
             if !Self.equal(store.object(forKey: key), value) { store.set(value, forKey: key) }
         }

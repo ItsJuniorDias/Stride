@@ -57,6 +57,7 @@ struct RootView: View {
         }
         .task { tracker.restoreIfNeeded() }
         .task { await RunMaintenance.backfillBestEfforts(in: context) }
+        .task { Vitals.removeOrphans(in: context) }
         .background { IntegrationSync() }
         // Waits until no run is on screen: a sheet can't show over the run's full-screen cover.
         .sheet(item: Binding(get: { tracker.isPresented || mirrored.isPresented ? nil : FriendsService.shared.pendingInvite },

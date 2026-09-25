@@ -40,11 +40,16 @@ final class FriendsService {
     @ObservationIgnored private var latestSamples: [RunSample] = []
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     /// Made-up friends for screenshots: nothing goes to iCloud or into settings.
-    @ObservationIgnored private var demo: (codes: [String], sharing: Bool, cheered: [String])?
+    @ObservationIgnored private var demo: (codes: [String], sharing: Bool, cheered: [String], blocked: [String])?
+    /// A code found to belong to someone else was replaced once; a second failure stops there.
+    @ObservationIgnored private var rotatedForPermission = false
+    private static let demoCode = "WEHMXS2P"
 
     static let recordType = "Runner"
     private static let cardsCacheKey = "friendCardsCache"
-    private static let pendingDeletionKey = "friendCardPendingDeletion"
+    /// Codes whose public card still has to be deleted (sharing turned off, or a code changed while
+    /// offline). Retried until each is gone.
+    private static let cardsToDeleteKey = "friendCardsToDelete"
 
     init() {
         if let data = UserDefaults.standard.data(forKey: Self.cardsCacheKey),
@@ -64,6 +69,7 @@ final class FriendsService {
     @ObservationIgnored private var knownSharing = UserDefaults.standard.bool(forKey: StrideSettings.shareWithFriends)
 
     private func settingsChanged() {
+        guard demo == nil else { return }
         let codes = UserDefaults.standard.stringArray(forKey: StrideSettings.friendCodes) ?? []
         let sharing = UserDefaults.standard.bool(forKey: StrideSettings.shareWithFriends)
         if codes != knownCodes {
@@ -76,16 +82,43 @@ final class FriendsService {
         if sharing != knownSharing {
             knownSharing = sharing
             withMutation(keyPath: \.isSharing) {}
-            // Turned off on another device: make sure the card is gone.
-            if !sharing { UserDefaults.standard.set(true, forKey: Self.pendingDeletionKey) }
+            if sharing {
+                // Turned on on another device: the card stays, and this device keeps it current.
+                removeFromDeletion(myCode)
+                lastPublished = nil
+                publish(from: latestSamples)
+            } else {
+                // Turned off on another device: make sure the card is gone.
+                addToDeletion(myCode)
+            }
         }
     }
 
     private func accountChanged() {
         lastPublished = nil
-        cards = [:]
-        saveCache()
-        Task { await checkAccount() }
+        Task {
+            await checkAccount()
+            if account == .available {
+                await refresh()
+            } else {
+                cards = [:]
+                lastRefresh = nil
+                saveCache()
+            }
+        }
+    }
+
+    private var cardsToDelete: [String] {
+        UserDefaults.standard.stringArray(forKey: Self.cardsToDeleteKey) ?? []
+    }
+
+    private func addToDeletion(_ code: String) {
+        guard demo == nil, !cardsToDelete.contains(code) else { return }
+        UserDefaults.standard.set(cardsToDelete + [code], forKey: Self.cardsToDeleteKey)
+    }
+
+    private func removeFromDeletion(_ code: String) {
+        UserDefaults.standard.set(cardsToDelete.filter { $0 != code }, forKey: Self.cardsToDeleteKey)
     }
 
     // MARK: Settings
@@ -106,6 +139,7 @@ final class FriendsService {
 
     /// This runner's code, created the first time it's needed (and synced to their other devices).
     var myCode: String {
+        if demo != nil { return Self.demoCode }
         if let code = UserDefaults.standard.string(forKey: StrideSettings.friendCode), ShareCode.normalize(code) != nil { return code }
         let code = ShareCode.generate()
         UserDefaults.standard.set(code, forKey: StrideSettings.friendCode)
@@ -127,8 +161,16 @@ final class FriendsService {
     }
 
     var blockedCodes: [String] {
-        get { access(keyPath: \.blockedCodes); return UserDefaults.standard.stringArray(forKey: StrideSettings.blockedCodes) ?? [] }
-        set { withMutation(keyPath: \.blockedCodes) { UserDefaults.standard.set(newValue, forKey: StrideSettings.blockedCodes) } }
+        get {
+            access(keyPath: \.blockedCodes)
+            return demo?.blocked ?? UserDefaults.standard.stringArray(forKey: StrideSettings.blockedCodes) ?? []
+        }
+        set {
+            withMutation(keyPath: \.blockedCodes) {
+                if demo != nil { demo?.blocked = newValue; return }
+                UserDefaults.standard.set(newValue, forKey: StrideSettings.blockedCodes)
+            }
+        }
     }
 
     /// Friends' cards in the order they were added.
@@ -147,7 +189,10 @@ final class FriendsService {
     static func publicName(_ raw: String) -> String {
         let words = raw.split(whereSeparator: \.isWhitespace).filter { word in
             let lower = word.lowercased()
-            return !(lower.contains("http") || lower.contains("www.") || lower.contains("@") || lower.contains(".com"))
+            let digits = lower.filter(\.isNumber).count
+            // No links, handles, domains or phone numbers.
+            return !(lower.contains("http") || lower.contains("/") || lower.contains("@") || digits >= 5
+                || lower.range(of: #"\.[a-z]{2,}"#, options: .regularExpression) != nil)
         }
         let name = String(words.joined(separator: " ").prefix(30))
         return name.isEmpty ? "Runner" : name
@@ -224,10 +269,15 @@ final class FriendsService {
             let (results, _) = try await database.modifyRecords(saving: [record], deleting: [], savePolicy: .allKeys)
             if case .failure(let error) = results[id] { throw error }
             lastPublished = card
-            UserDefaults.standard.removeObject(forKey: Self.pendingDeletionKey)
+            rotatedForPermission = false
             errorMessage = nil
         } catch let error as CKError where error.code == .permissionFailure {
-            // Someone else's record has this name (they took the code first): use a new code.
+            // Someone else's record has this name (they took the code first): use a new code, once.
+            guard !rotatedForPermission else {
+                errorMessage = "Couldn't share your card. Try again later."
+                return
+            }
+            rotatedForPermission = true
             UserDefaults.standard.removeObject(forKey: StrideSettings.friendCode)
             lastPublished = nil
             notice = "Your friend code changed to \(ShareCode.display(myCode)). Send your friends the new one."
@@ -244,40 +294,50 @@ final class FriendsService {
         latestSamples = samples
         publishTask?.cancel()
         lastPublished = nil
+        guard demo == nil else { return }
+        let code = myCode
         if on {
-            UserDefaults.standard.removeObject(forKey: Self.pendingDeletionKey)
+            removeFromDeletion(code)
             publish(from: samples)
         } else {
-            UserDefaults.standard.set(true, forKey: Self.pendingDeletionKey)
-            let code = myCode
+            addToDeletion(code)
             enqueue { await self.deleteCard(code) }
         }
     }
 
-    /// Tries again to delete a card that couldn't be deleted (offline when sharing was turned off).
+    /// Tries again to delete cards that couldn't be deleted (offline when sharing was turned off or
+    /// the code changed).
     func retryPendingDeletion() {
-        guard demo == nil, !isSharing, UserDefaults.standard.bool(forKey: Self.pendingDeletionKey) else { return }
-        let code = myCode
-        enqueue { await self.deleteCard(code) }
+        guard demo == nil else { return }
+        for code in cardsToDelete {
+            enqueue { await self.deleteCard(code) }
+        }
     }
 
     private func deleteCard(_ code: String) async {
-        guard demo == nil else { return }
+        // The live card (sharing is on again, maybe from another device) stays.
+        guard demo == nil, !(isSharing && code == myCode) else {
+            removeFromDeletion(code)
+            return
+        }
         do {
             _ = try await database.deleteRecord(withID: Self.recordID(for: code))
-            if !isSharing || code != myCode { UserDefaults.standard.removeObject(forKey: Self.pendingDeletionKey) }
+            removeFromDeletion(code)
         } catch let error as CKError where error.code == .unknownItem {
-            UserDefaults.standard.removeObject(forKey: Self.pendingDeletionKey)
+            removeFromDeletion(code)
         } catch {
             errorMessage = Self.message(for: error)
         }
     }
 
-    /// A new code: whoever had the old one stops seeing me. The old card is deleted.
+    /// A new code: whoever had the old one stops seeing me. The old card is deleted (retried until
+    /// it's gone).
     func changeCode(samples: [RunSample]) {
+        guard demo == nil else { return }
         let old = myCode
         UserDefaults.standard.set(ShareCode.generate(), forKey: StrideSettings.friendCode)
         lastPublished = nil
+        addToDeletion(old)
         enqueue { await self.deleteCard(old) }
         if isSharing { publish(from: samples) }
         notice = "Your new code is \(ShareCode.display(myCode)). Friends who had the old one no longer see you."
@@ -354,6 +414,18 @@ final class FriendsService {
         friendCodes.removeAll { $0 == code }
         cards[code] = nil
         saveCache()
+        // A cheer for them this week comes off my card too.
+        let week = RunnerStats.weekKey(for: .now)
+        var cheered = cheeredThisWeek(week)
+        if cheered.contains(code) {
+            cheered.removeAll { $0 == code }
+            if demo != nil {
+                demo?.cheered = cheered
+            } else {
+                UserDefaults.standard.set(cheered, forKey: StrideSettings.cheered)
+            }
+            publish(from: latestSamples)
+        }
     }
 
     /// Removes a friend and won't add them again. They keep seeing me until I change my code.
@@ -427,9 +499,10 @@ final class FriendsService {
             lastRunDistance: record["lastRunDistance"] as? Double,
             lastRunDuration: record["lastRunDuration"] as? Double
         )
+        // No timestamp: it changes on every save, and cards that only differ by it would redraw
+        // widgets and use up Apple Watch transfers for nothing.
         return RunnerCard(code: code(from: record.recordID), name: publicName(name), stats: stats,
-                          cheered: record["cheered"] as? [String] ?? [], cheerWeekKey: record["cheerWeekKey"] as? String ?? "",
-                          updatedAt: record.modificationDate)
+                          cheered: record["cheered"] as? [String] ?? [], cheerWeekKey: record["cheerWeekKey"] as? String ?? "")
     }
 
     /// Same content, ignoring when it was made.
@@ -460,7 +533,7 @@ final class FriendsService {
             ("ANAK7Q2M", "Ana Souza", 28_400, 4, 96_000, true), ("BRUN8X4P", "Bruno Lima", 19_900, 3, 71_000, false),
             ("CARL3V9T", "Carla Mendes", 12_300, 2, 55_000, true), ("DIEG6H2W", "Diego Alves", 0, 0, 20_000, false),
         ]
-        demo = (people.map(\.0), true, [])
+        demo = (people.map(\.0), true, [], [])
         publishTask?.cancel()
         errorMessage = nil
         let me = myCode
