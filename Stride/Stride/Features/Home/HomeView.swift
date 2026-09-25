@@ -51,10 +51,14 @@ struct HomeView: View {
             .navigationTitle(greeting)
             .navigationDestination(for: Run.self) { RunDetailView(run: $0) }
             .planDestinations()
+            .progressDestinations()
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { now = .now }
         }
+        // A run saved while the app stays open is newer than `now`; streaks would leave it out.
+        .onChange(of: runs.count) { now = .now }
+        .onChange(of: runs.first?.startDate) { now = .now }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
             now = .now
         }
@@ -95,7 +99,7 @@ struct HomeView: View {
         let month = Calendar.current.dateInterval(of: .month, for: now)
         let monthRuns = runs.filter { month?.contains($0.startDate) ?? false }
         let distance = monthRuns.reduce(0) { $0 + $1.distance }
-        let streak = weekStreak
+        let streak = Streaks.summary(of: runs.map(\.startDate), now: now).currentWeeks
         return HStack(spacing: Space.x3) {
             stripTile(MetricView("This month", value: RunFormat.distance(distance, unit: unit, fractionDigits: 1), unit: unit.distanceSymbol, size: .small))
             stripTile(MetricView("Runs", value: "\(monthRuns.count)", size: .small))
@@ -112,23 +116,6 @@ struct HomeView: View {
             .background(Color.surfaceRaised, in: RoundedRectangle(cornerRadius: Radius.md))
     }
 
-    /// Consecutive weeks with at least one run, counting back from this week
-    /// (or from last week, if there's no run yet this week).
-    private var weekStreak: Int {
-        let calendar = Calendar.current
-        let weeks = Set(runs.compactMap { calendar.dateInterval(of: .weekOfYear, for: $0.startDate)?.start })
-        guard var cursor = calendar.dateInterval(of: .weekOfYear, for: now)?.start else { return 0 }
-        if !weeks.contains(cursor) {
-            cursor = calendar.date(byAdding: .weekOfYear, value: -1, to: cursor) ?? cursor
-        }
-        var count = 0
-        while weeks.contains(cursor) {
-            count += 1
-            cursor = calendar.date(byAdding: .weekOfYear, value: -1, to: cursor) ?? cursor
-        }
-        return count
-    }
-
     private var greeting: String {
         let name = userName.split(separator: " ").first.map(String.init)
         let base = switch Calendar.current.component(.hour, from: now) {
@@ -143,5 +130,5 @@ struct HomeView: View {
 #Preview {
     HomeView(selectedTab: .constant(.home))
         .environment(RunTracker())
-        .modelContainer(for: [Run.self, Shoe.self], inMemory: true)
+        .modelContainer(for: [Run.self, Shoe.self, Challenge.self], inMemory: true)
 }

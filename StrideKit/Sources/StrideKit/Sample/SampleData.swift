@@ -37,6 +37,7 @@ public enum SampleData {
         let elevationLoss: Double
         let averageHeartRate: Double?
         let zoneSeconds: [HeartRateZone: TimeInterval]
+        let bestEfforts: [EffortDistance: TimeInterval]
     }
 
     private static func prepare(now: Date) -> [Prepared] {
@@ -52,18 +53,21 @@ public enum SampleData {
             let elevation = RouteAnalysis.elevation(of: points)
             let rates = points.compactMap(\.heartRate)
             let encoder = JSONEncoder()
+            let distance = RouteAnalysis.distance(of: points)
+            let duration = RouteAnalysis.movingTime(of: points)
             prepared.append(Prepared(
                 plan: plan,
                 start: start,
                 routeData: try? encoder.encode(points),
                 previewData: try? encoder.encode(RouteAnalysis.preview(of: points)),
                 splitsData: try? encoder.encode(RouteAnalysis.splits(from: points, unit: .metric)),
-                distance: RouteAnalysis.distance(of: points),
-                duration: RouteAnalysis.movingTime(of: points),
+                distance: distance,
+                duration: duration,
                 elevationGain: elevation.gain,
                 elevationLoss: elevation.loss,
                 averageHeartRate: rates.isEmpty ? nil : rates.reduce(0, +) / Double(rates.count),
-                zoneSeconds: RouteAnalysis.zoneSeconds(of: points, maxHeartRate: HeartRateZone.defaultMaxHeartRate)
+                zoneSeconds: RouteAnalysis.zoneSeconds(of: points, maxHeartRate: HeartRateZone.defaultMaxHeartRate),
+                bestEfforts: BestEfforts.compute(route: points, distance: distance, duration: duration)
             ))
         }
         return prepared
@@ -76,7 +80,9 @@ public enum SampleData {
 
         let daily = Shoe(name: "Daily Trainer", brand: "Road · neutral", initialDistance: 184_000)
         let race = Shoe(name: "Race Day", brand: "Carbon plate", initialDistance: 42_000, maxDistance: 500_000)
+        race.colorIndex = 1
         let old = Shoe(name: "Old Faithful", brand: "Road · stability", initialDistance: 812_000)
+        old.colorIndex = 4
         old.isRetired = true
         [daily, race, old].forEach(context.insert)
 
@@ -92,6 +98,8 @@ public enum SampleData {
             run.elevationLoss = item.elevationLoss
             run.averageHeartRate = item.averageHeartRate
             run.zoneSeconds = item.zoneSeconds
+            run.bestEfforts = item.bestEfforts
+            run.effortsVersion = BestEfforts.version
             if index.isMultiple(of: 3) { run.source = .watch }
             run.workoutName = plan.name
             run.feeling = plan.feeling
@@ -109,7 +117,18 @@ public enum SampleData {
         treadmill.feeling = .okay
         treadmill.notes = "Rainy day, gym treadmill at 1% incline."
         treadmill.shoe = daily
+        treadmill.updateBestEfforts(route: [])
         context.insert(treadmill)
+
+        // One challenge running this month, and one finished last month.
+        let catalog = ChallengeTemplate.catalog(unit: .metric)
+        if let monthly = catalog.first(where: { $0.id == "monthly-distance" }) {
+            context.insert(monthly.makeChallenge(now: now))
+        }
+        if let runs = catalog.first(where: { $0.id == "monthly-runs" }),
+           let lastMonth = Calendar.current.date(byAdding: .month, value: -1, to: now) {
+            context.insert(runs.makeChallenge(now: lastMonth))
+        }
 
         try? context.save()
     }
@@ -155,7 +174,9 @@ public enum SampleData {
                     center.longitude + r * cos(angle) / lonScale)
         }
 
-        var points: [RoutePoint] = []
+        let origin = position(theta)
+        var points = [RoutePoint(latitude: origin.lat, longitude: origin.lon, altitude: 752 + 9 * sin(theta * 2),
+                                 timestamp: start, heartRate: 105)]
         var covered = 0.0, elapsed = 0.0
         let step = 4.0
         while covered < meters {
@@ -179,7 +200,8 @@ public enum SampleData {
                 latitude: spot.lat,
                 longitude: spot.lon,
                 altitude: 752 + 9 * sin(theta * 2) + 4 * sin(covered / 450),
-                timestamp: start.addingTimeInterval(elapsed),
+                // Stamped with the time the point was reached, one step after the previous one.
+                timestamp: start.addingTimeInterval(elapsed + step),
                 heartRate: heartRate
             ))
             covered += ds

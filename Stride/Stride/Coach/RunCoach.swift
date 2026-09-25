@@ -171,8 +171,9 @@ final class RunCoach {
         voice.speak(CoachScript.autoResumed)
     }
 
-    func finished(distance: Double, elapsed: TimeInterval) {
+    func finished(distance: Double, elapsed: TimeInterval, records: [RecordAchievement] = []) {
         voice.speak(CoachScript.finished(distance: distance, elapsed: elapsed, unit: unit))
+        if let line = CoachScript.records(records) { voice.speak(line) }
     }
 
     /// Stops speaking but keeps the state, so the live screen doesn't change while it closes.

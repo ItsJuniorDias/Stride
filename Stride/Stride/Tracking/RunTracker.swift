@@ -66,6 +66,8 @@ final class RunTracker {
     private(set) var accuracyLimited = false
     private(set) var lastLocation: CLLocation?
     private(set) var finishedRun: Run?
+    /// Personal records the finished run set, for the summary.
+    private(set) var finishedAchievements: [RecordAchievement] = []
     /// The current run was restored from a checkpoint after the app was terminated.
     private(set) var wasRestored = false
     /// Discarded: recording stopped, the screen keeps its last state while the cover slides away,
@@ -253,13 +255,17 @@ final class RunTracker {
         run.calories = calories
         run.workoutName = configuration.workoutName ?? configuration.workout?.name
         run.planSessionID = configuration.planSessionID
+        run.updateBestEfforts(route: route)
         // A plan session counts as done when every step of it was completed.
         if let sessionID = configuration.planSessionID, coach.workoutComplete, !PlanProgress.completed.contains(sessionID) {
             PlanProgress.markCompleted(sessionID)
             newlyCompletedSessionID = sessionID
         }
-        coach.finished(distance: distance, elapsed: elapsed)
-        if let shoeID = configuration.shoeID {
+        // Against every earlier run, before this one is in the database.
+        finishedAchievements = RecordBook.achievements(for: run, in: context)
+        coach.finished(distance: distance, elapsed: elapsed, records: finishedAchievements)
+        // Plan sessions don't pick a shoe; they use the default one.
+        if let shoeID = configuration.shoeID ?? ShoeDefaults.id {
             let descriptor = FetchDescriptor<Shoe>(predicate: #Predicate { $0.id == shoeID })
             run.shoe = try? context.fetch(descriptor).first
         }
@@ -310,6 +316,7 @@ final class RunTracker {
         currentSpeed = 0
         isAutoPaused = false
         finishedRun = nil
+        finishedAchievements = []
         wasRestored = false
         segment = 0
         accumulated = 0

@@ -7,7 +7,8 @@ struct ActivitiesView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Run.startDate, order: .reverse) private var runs: [Run]
     @AppStorage(StrideSettings.unitSystem) private var unit: UnitSystem = .metric
-    @State private var path: [Run] = []
+    /// Mixed routes (runs and shoes); a deleted run's screen shows its own "Run deleted" state.
+    @State private var path = NavigationPath()
     @State private var addingRun = false
 
     private var months: [(month: Date, runs: [Run])] {
@@ -64,8 +65,8 @@ struct ActivitiesView: View {
             }
             .sheet(isPresented: $addingRun) { ManualRunView() }
             .navigationDestination(for: Run.self) { RunDetailView(run: $0) }
+            .progressDestinations()
         }
-        .onChange(of: runs) { path.removeAll { $0.isDeleted || $0.modelContext == nil } }
     }
 }
 

@@ -56,6 +56,7 @@ struct RootView: View {
                 }
         }
         .task { tracker.restoreIfNeeded() }
+        .task { await RunMaintenance.backfillBestEfforts(in: context) }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { tracker.checkpoint() }
         }
@@ -83,7 +84,9 @@ struct RootView: View {
         if arguments.contains("-seedSampleData") {
             try? context.delete(model: Run.self)
             try? context.delete(model: Shoe.self)
+            try? context.delete(model: Challenge.self)
             await SampleData.insert(into: context)
+            ShoeDefaults.set(try? context.fetch(FetchDescriptor<Shoe>(predicate: #Predicate { $0.name == "Daily Trainer" })).first)
         }
         if arguments.contains("-exportShareCard") {
             let runs = (try? context.fetch(FetchDescriptor<Run>(sortBy: [SortDescriptor(\.startDate, order: .reverse)]))) ?? []

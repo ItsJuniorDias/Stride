@@ -40,11 +40,12 @@ struct DurationPicker: View {
 
 /// A distance typed in the runner's unit, stored in meters.
 struct DistanceField: View {
+    var label = "Distance"
     @Binding var meters: Double
     let unit: UnitSystem
 
     var body: some View {
-        LabeledContent("Distance") {
+        LabeledContent(label) {
             HStack(spacing: Space.x1) {
                 // Optional, so clearing the field sets 0 (and disables Save) instead of keeping the old value.
                 TextField("0", value: Binding<Double?>(

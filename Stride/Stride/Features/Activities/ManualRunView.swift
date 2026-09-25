@@ -53,6 +53,9 @@ struct ManualRunView: View {
                         .lineLimit(2...5)
                 }
             }
+            .onAppear {
+                if shoe == nil { shoe = shoes.first { ShoeDefaults.isDefault($0) && !$0.isRetired } }
+            }
             .navigationTitle("Add run")
             .scrollContentBackground(.hidden)
             .background(Color.surface)
@@ -78,6 +81,7 @@ struct ManualRunView: View {
         run.feeling = feeling
         run.shoe = shoe
         run.notes = notes
+        run.updateBestEfforts(route: [])
         context.insert(run)
         try? context.save()
         dismiss()
@@ -86,5 +90,5 @@ struct ManualRunView: View {
 
 #Preview {
     ManualRunView()
-        .modelContainer(for: [Run.self, Shoe.self], inMemory: true)
+        .modelContainer(for: [Run.self, Shoe.self, Challenge.self], inMemory: true)
 }

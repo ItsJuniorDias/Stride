@@ -6,6 +6,8 @@ import StrideUI
 /// Shown right after a run is finished. The run is already saved; this screen adds how it felt.
 struct RunSummaryView: View {
     @Bindable var run: Run
+    /// Records this run set; passed in so they stay while the cover slides away after the tracker resets.
+    let achievements: [RecordAchievement]
     @Environment(RunTracker.self) private var tracker
     @Environment(\.modelContext) private var context
     @AppStorage(StrideSettings.unitSystem) private var unit: UnitSystem = .metric
@@ -31,7 +33,15 @@ struct RunSummaryView: View {
                         .foregroundStyle(.inkMuted)
                 }
 
+                if !achievements.isEmpty {
+                    RecordsEarnedCard(achievements: achievements, unit: unit)
+                }
+
                 RunReport(run: run, route: route, splits: splits, unit: unit)
+
+                if let shoe = run.shoe, shoe.isWornOut, !shoe.isRetired {
+                    ShoeWearNotice(shoe: shoe, unit: unit)
+                }
 
                 VStack(alignment: .leading, spacing: Space.x3) {
                     Text("How did it feel?").font(.headline).foregroundStyle(.ink)
@@ -91,6 +101,29 @@ struct RunSummaryView: View {
             if route.isEmpty { route = run.route }
             splits = unit == .metric ? run.splits : RouteAnalysis.splits(from: route, unit: unit)
         }
+    }
+}
+
+/// Shown after a run that took a shoe close to (or past) its replacement distance.
+struct ShoeWearNotice: View {
+    let shoe: Shoe
+    let unit: UnitSystem
+
+    var body: some View {
+        HStack(alignment: .top, spacing: Space.x3) {
+            ShoeIcon(shoe: shoe)
+            VStack(alignment: .leading, spacing: Space.x2) {
+                Text(shoe.wear >= 1 ? "Time for new shoes" : "\(shoe.displayName) is nearly worn out")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.ink)
+                Text("\(shoe.displayName) has \(ShoeWear.distance(shoe.totalDistance, unit: unit)) \(unit.distanceSymbol) on it. You planned to replace it at \(ShoeWear.distance(shoe.maxDistance, unit: unit)) \(unit.distanceSymbol).")
+                    .font(.caption)
+                    .foregroundStyle(.inkMuted)
+                Button("Retire shoe") { ShoeDefaults.setRetired(shoe, true) }
+                    .font(.subheadline.weight(.semibold))
+            }
+        }
+        .raisedCard()
     }
 }
 

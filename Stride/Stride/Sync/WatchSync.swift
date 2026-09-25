@@ -51,7 +51,9 @@ final class WatchSync: NSObject {
         let id = transfer.id
         let existing = (try? context.fetchCount(FetchDescriptor<Run>(predicate: #Predicate { $0.id == id }))) ?? 0
         if existing == 0 {
-            context.insert(Run(transfer: transfer))
+            let run = Run(transfer: transfer)
+            run.shoe = ShoeDefaults.shoe(in: context)
+            context.insert(run)
             do {
                 try context.save()
             } catch {

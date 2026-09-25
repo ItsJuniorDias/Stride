@@ -9,6 +9,7 @@ struct ProfileView: View {
     @AppStorage(StrideSettings.userName) private var userName = ""
     @AppStorage(StrideSettings.unitSystem) private var unit: UnitSystem = .metric
     @AppStorage(StrideSettings.weeklyGoal) private var weeklyGoal = 20.0
+    @AppStorage(StrideSettings.yearlyGoal) private var yearlyGoal = 1_000.0
     @AppStorage(StrideSettings.autoPause) private var autoPause = true
     @AppStorage(StrideSettings.weightKg) private var weightKg = 70.0
     @AppStorage(StrideSettings.maxHeartRate) private var maxHeartRate = HeartRateZone.defaultMaxHeartRate
@@ -33,10 +34,15 @@ struct ProfileView: View {
                     Stepper(value: $weeklyGoal, in: 5...300, step: 5) {
                         LabeledContent("Weekly distance", value: "\(Int(weeklyGoal)) \(unit.distanceSymbol)")
                     }
+                    Stepper(value: $yearlyGoal, in: 100...10_000, step: 50) {
+                        LabeledContent("Yearly distance", value: "\(Int(yearlyGoal).formatted()) \(unit.distanceSymbol)")
+                    }
                 }
 
                 Section("Training") {
                     NavigationLink("Training plans", value: PlanRoute.list)
+                    NavigationLink("Challenges", value: ProgressRoute.challenges)
+                    NavigationLink("Shoes", value: ProgressRoute.shoes)
                 }
 
                 Section {
@@ -97,13 +103,17 @@ struct ProfileView: View {
             .scrollContentBackground(.hidden)
             .background(Color.surface)
             .navigationTitle("Profile")
+            .navigationDestination(for: Run.self) { RunDetailView(run: $0) }
             .planDestinations()
+            .progressDestinations()
             .onChange(of: unit) { WatchSync.shared.pushSettings() }
             .onChange(of: maxHeartRate) { WatchSync.shared.pushSettings() }
-            .confirmationDialog("Delete all runs and shoes?", isPresented: $confirmingDeleteAll, titleVisibility: .visible) {
+            .confirmationDialog("Delete all runs, shoes and challenges?", isPresented: $confirmingDeleteAll, titleVisibility: .visible) {
                 Button("Delete All", role: .destructive) {
                     try? context.delete(model: Run.self)
                     try? context.delete(model: Shoe.self)
+                    try? context.delete(model: Challenge.self)
+                    ShoeDefaults.set(nil)
                 }
             }
         }

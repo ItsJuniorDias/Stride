@@ -33,6 +33,10 @@ public final class Run {
     /// Where the run was recorded: "iphone" or "watch".
     public var sourceRaw: String = RunSource.iPhone.rawValue
     public var shoe: Shoe?
+    /// Fastest seconds over standard distances within this run, keyed by ``EffortDistance`` raw value.
+    public var bestEffortsData: Data?
+    /// The ``BestEfforts/version`` the stored efforts were computed with; 0 when never computed.
+    public var effortsVersion: Int = 0
 
     public init(
         startDate: Date,
@@ -95,6 +99,34 @@ public final class Run {
             let raw = Dictionary(uniqueKeysWithValues: newValue.map { ($0.key.rawValue, $0.value) })
             zoneData = raw.isEmpty ? nil : try? JSONEncoder().encode(raw)
         }
+    }
+
+    public var bestEfforts: [EffortDistance: TimeInterval] {
+        get {
+            let raw = bestEffortsData.flatMap { try? JSONDecoder().decode([Int: TimeInterval].self, from: $0) } ?? [:]
+            return Dictionary(uniqueKeysWithValues: raw.compactMap { key, value in EffortDistance(rawValue: key).map { ($0, value) } })
+        }
+        set {
+            let raw = Dictionary(uniqueKeysWithValues: newValue.map { ($0.key.rawValue, $0.value) })
+            bestEffortsData = try? JSONEncoder().encode(raw)
+        }
+    }
+
+    /// Recomputes the best efforts from the route (pass it when already decoded) and the run's final
+    /// distance and time. Call after those are set.
+    public func updateBestEfforts(route points: [RoutePoint]? = nil) {
+        bestEfforts = BestEfforts.compute(route: points ?? route, distance: distance, duration: duration, typed: isManual)
+        effortsVersion = BestEfforts.version
+    }
+
+    /// The numbers stats, streaks and challenges use.
+    public var sample: RunSample {
+        RunSample(date: startDate, distance: distance, duration: duration, elevationGain: elevationGain, calories: calories)
+    }
+
+    /// What personal records use. Decodes the stored efforts; cache the result for lists.
+    public var recordEntry: RecordEntry {
+        RecordEntry(id: id, date: startDate, distance: distance, duration: duration, elevationGain: elevationGain, efforts: bestEfforts)
     }
 
     public var preview: [Coordinate] {
@@ -183,6 +215,7 @@ public final class Run {
             elevationGain = elevation.gain
             elevationLoss = elevation.loss
         }
+        updateBestEfforts(route: transfer.route)
     }
 
     /// Running costs roughly 1.036 kcal per kg per km.

@@ -22,6 +22,10 @@ public enum StrideSettings {
     public static let activePlanID = "activePlanID"
     /// Completed training-plan session ids, comma separated.
     public static let completedPlanSessions = "completedPlanSessions"
+    /// The shoe new runs use (iPhone, Watch and manual), as a UUID string; empty for none.
+    public static let defaultShoeID = "defaultShoeID"
+    /// The Progress tab's period: week, month, year or all.
+    public static let statsPeriod = "statsPeriod"
 
     /// Reads a Bool setting that defaults to true when never set.
     public static func bool(_ key: String, default value: Bool = true) -> Bool {

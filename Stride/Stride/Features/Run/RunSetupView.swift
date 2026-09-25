@@ -19,10 +19,20 @@ struct RunSetupView: View {
     @State private var runType: RunType = .free
     @State private var targetMeters: Double = 5_000
     @State private var targetMinutes = 30
-    @State private var shoeID: UUID?
+    /// The default shoe: picking one here makes it the shoe for Apple Watch and manual runs too.
+    @AppStorage(StrideSettings.defaultShoeID) private var defaultShoeRaw = ""
     @State private var camera: MapCameraPosition = .userLocation(fallback: .automatic)
 
     private let runTypes: [RunType] = [.free, .distance, .time, .intervals]
+
+    /// The default shoe while it's still active.
+    private var shoeID: UUID? {
+        UUID(uuidString: defaultShoeRaw).flatMap { id in shoes.contains { $0.id == id } ? id : nil }
+    }
+
+    private var shoeSelection: Binding<UUID?> {
+        Binding(get: { shoeID }, set: { defaultShoeRaw = $0?.uuidString ?? "" })
+    }
 
     private var intervalPreset: Workout {
         IntervalPresets.all.first { $0.id == intervalPresetID } ?? IntervalPresets.all[0]
@@ -185,7 +195,7 @@ struct RunSetupView: View {
         VStack(spacing: 0) {
             if !shoes.isEmpty {
                 Menu {
-                    Picker("Shoe", selection: $shoeID) {
+                    Picker("Shoe", selection: shoeSelection) {
                         Text("No shoe").tag(UUID?.none)
                         ForEach(shoes) { shoe in
                             Text(shoe.name).tag(UUID?.some(shoe.id))

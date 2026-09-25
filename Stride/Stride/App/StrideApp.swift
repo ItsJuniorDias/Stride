@@ -10,7 +10,7 @@ struct StrideApp: App {
 
     init() {
         do {
-            container = try ModelContainer(for: Run.self, Shoe.self)
+            container = try ModelContainer(for: Run.self, Shoe.self, Challenge.self)
         } catch {
             fatalError("Could not open the Stride database: \(error)")
         }

@@ -33,9 +33,12 @@ struct RunDetailView: View {
     private var content: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Space.x5) {
-                Text(run.startDate.formatted(date: .complete, time: .shortened))
-                    .font(.subheadline)
-                    .foregroundStyle(.inkMuted)
+                VStack(alignment: .leading, spacing: Space.x2) {
+                    Text(run.startDate.formatted(date: .complete, time: .shortened))
+                        .font(.subheadline)
+                        .foregroundStyle(.inkMuted)
+                    RecordBadges(runID: run.id)
+                }
 
                 RunReport(run: run, route: route, splits: splits, unit: unit)
 
@@ -60,13 +63,27 @@ struct RunDetailView: View {
                 }
 
                 if let shoe = run.shoe {
-                    LabeledContent {
-                        Text(shoe.name).foregroundStyle(.ink)
-                    } label: {
-                        Label("Shoe", systemImage: "shoe.fill").foregroundStyle(.inkMuted)
+                    NavigationLink(value: shoe) {
+                        HStack(spacing: Space.x3) {
+                            ShoeIcon(shoe: shoe, size: 32)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Shoe").metricLabelStyle()
+                                Text(shoe.displayName).font(.subheadline.weight(.semibold)).foregroundStyle(.ink)
+                            }
+                            Spacer()
+                            Text("\(ShoeWear.distance(shoe.totalDistance, unit: unit)) \(unit.distanceSymbol)")
+                                .font(.subheadline)
+                                .monospacedDigit()
+                                .foregroundStyle(.inkMuted)
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.inkMuted)
+                                .accessibilityHidden(true)
+                        }
+                        .raisedCard()
+                        .contentShape(Rectangle())
                     }
-                    .padding(Space.x4)
-                    .background(Color.surfaceRaised, in: RoundedRectangle(cornerRadius: Radius.md))
+                    .buttonStyle(.plain)
                 }
             }
             .padding(Space.x4)

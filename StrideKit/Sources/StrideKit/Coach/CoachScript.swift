@@ -97,6 +97,32 @@ public enum CoachScript {
     public static func finished(distance: Double, elapsed: TimeInterval, unit: UnitSystem) -> String {
         "Run finished. \(spokenDistance(distance, unit: unit).capitalizedFirst) in \(spokenDuration(elapsed)). Well done."
     }
+
+    /// "New personal record: fastest 5K." Only the two longest efforts (or other records) are named.
+    public static func records(_ achievements: [RecordAchievement]) -> String? {
+        guard !achievements.isEmpty else { return nil }
+        let names = achievements.sorted { spokenPriority($0.kind) > spokenPriority($1.kind) }.prefix(2).map(spokenName)
+        let label = achievements.count == 1 ? "New personal record" : "New personal records"
+        return "\(label): \(names.joined(separator: " and "))."
+    }
+
+    private static func spokenName(_ achievement: RecordAchievement) -> String {
+        switch achievement.kind {
+        case .effort(let distance): achievement.previous == nil ? "your first \(distance.title)" : "fastest \(distance.title)"
+        case .longestDistance: "longest run"
+        case .longestDuration: "longest time on your feet"
+        case .mostElevation: "most climbing"
+        }
+    }
+
+    private static func spokenPriority(_ kind: RecordKind) -> Double {
+        switch kind {
+        case .effort(let distance): distance.meters
+        case .longestDistance: 500
+        case .longestDuration: 400
+        case .mostElevation: 300
+        }
+    }
 }
 
 private extension String {

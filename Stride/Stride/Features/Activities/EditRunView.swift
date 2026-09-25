@@ -80,9 +80,11 @@ struct EditRunView: View {
                     ? run.calories * meters / run.distance
                     : Run.estimatedCalories(distance: meters, weightKg: weightKg)
             }
+            let changed = run.distance != meters || run.duration != seconds
             run.startDate = date
             run.distance = meters
             run.duration = seconds
+            if changed { run.updateBestEfforts(route: []) }
         }
         try? context.save()
         dismiss()

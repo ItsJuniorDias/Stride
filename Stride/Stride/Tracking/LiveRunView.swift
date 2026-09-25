@@ -14,6 +14,7 @@ struct LiveRunView: View {
     /// The last visible state, kept while the cover animates away after the tracker resets.
     @State private var lastPhase: RunTracker.Phase = .countdown(3)
     @State private var lastRun: Run?
+    @State private var lastAchievements: [RecordAchievement] = []
 
     private var displayedPhase: RunTracker.Phase {
         tracker.phase == .idle ? lastPhase : tracker.phase
@@ -27,7 +28,7 @@ struct LiveRunView: View {
                 CountdownView(number: number, onSkip: { tracker.startNow() }, onCancel: { tracker.cancelCountdown() })
             case .finished:
                 if let run = tracker.finishedRun ?? lastRun {
-                    RunSummaryView(run: run)
+                    RunSummaryView(run: run, achievements: tracker.phase == .idle ? lastAchievements : tracker.finishedAchievements)
                 }
             case .running, .paused:
                 live
@@ -41,6 +42,7 @@ struct LiveRunView: View {
             guard tracker.phase != .idle else { return }
             lastPhase = tracker.phase
             lastRun = tracker.finishedRun ?? lastRun
+            lastAchievements = tracker.finishedAchievements
         }
         // Feedback lives here, on a view that survives the controls being swapped out.
         .sensoryFeedback(trigger: tracker.phase) { old, new in
