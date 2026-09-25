@@ -7,10 +7,14 @@ import StrideUI
 /// Pick a run type and target, check GPS, and start.
 struct RunSetupView: View {
     @Environment(RunTracker.self) private var tracker
+    @Environment(MirroredWorkout.self) private var mirrored
     @Environment(\.openURL) private var openURL
     @Query(filter: #Predicate<Shoe> { !$0.isRetired }, sort: \Shoe.createdAt) private var shoes: [Shoe]
     @AppStorage(StrideSettings.unitSystem) private var unit: UnitSystem = .metric
     @AppStorage(StrideSettings.autoPause) private var autoPause = true
+    /// Seconds per kilometer, 0 when off. Remembered between runs.
+    @AppStorage(StrideSettings.targetPace) private var targetPace = 0.0
+    @State private var intervalPresetID = IntervalPresets.all[0].id
 
     @State private var runType: RunType = .free
     @State private var targetMeters: Double = 5_000
@@ -18,8 +22,17 @@ struct RunSetupView: View {
     @State private var shoeID: UUID?
     @State private var camera: MapCameraPosition = .userLocation(fallback: .automatic)
 
-    /// Intervals arrive with the coach in phase 4.
-    private let runTypes: [RunType] = [.free, .distance, .time]
+    private let runTypes: [RunType] = [.free, .distance, .time, .intervals]
+
+    private var intervalPreset: Workout {
+        IntervalPresets.all.first { $0.id == intervalPresetID } ?? IntervalPresets.all[0]
+    }
+
+    /// Target paces offered, every 5 s, in seconds per the runner's unit:
+    /// 3'00"–10'00" per km, 4'50"–16'05" per mile (the same range).
+    private var paceOptions: [Double] {
+        unit == .metric ? Array(stride(from: 180.0, through: 600.0, by: 5.0)) : Array(stride(from: 290.0, through: 965.0, by: 5.0))
+    }
     private let timeOptions = [15, 20, 30, 45, 60, 90]
 
     private struct DistancePreset: Hashable {
@@ -65,6 +78,11 @@ struct RunSetupView: View {
         }
         .onAppear { tracker.startPreview() }
         .onDisappear { tracker.stopPreview() }
+        .alert("Apple Watch", isPresented: Binding(get: { mirrored.error != nil }, set: { if !$0 { mirrored.clearError() } })) {
+            Button("OK") {}
+        } message: {
+            Text(mirrored.error ?? "")
+        }
     }
 
     private var panel: some View {
@@ -72,6 +90,20 @@ struct RunSetupView: View {
             HStack {
                 GPSChip(quality: tracker.gpsQuality)
                 Spacer()
+                if mirrored.canStartOnWatch {
+                    Button {
+                        Task { await mirrored.startOnWatch(goal: watchGoal) }
+                    } label: {
+                        Label(mirrored.isStartingOnWatch ? "Opening…" : "Start on Watch", systemImage: "applewatch")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.ink)
+                            .padding(.horizontal, Space.x3)
+                            .frame(minHeight: 36)
+                            .background(Capsule().strokeBorder(Color.lineStrong, lineWidth: 1.5))
+                    }
+                    .disabled(mirrored.isStartingOnWatch)
+                    .accessibilityHint("Starts a run on your Apple Watch and shows it live here.")
+                }
             }
 
             if tracker.authorizationDenied {
@@ -125,7 +157,22 @@ struct RunSetupView: View {
                     }
                 }
             }
-        case .free, .intervals:
+        case .intervals:
+            VStack(alignment: .leading, spacing: Space.x2) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: Space.x2) {
+                        ForEach(IntervalPresets.all) { preset in
+                            SelectableChip(preset.name, isSelected: intervalPresetID == preset.id) {
+                                intervalPresetID = preset.id
+                            }
+                        }
+                    }
+                }
+                Text(intervalPreset.detail)
+                    .font(.caption)
+                    .foregroundStyle(.inkMuted)
+            }
+        case .free:
             Text("Run at your own pace. Stride records everything.")
                 .font(.subheadline)
                 .foregroundStyle(.inkMuted)
@@ -172,8 +219,47 @@ struct RunSetupView: View {
             .tint(.track)
             .padding(.horizontal, Space.x4)
             .frame(minHeight: Dimension.hitMin)
+            Divider()
+                .overlay(Color.line)
+                .padding(.leading, Space.x4)
+            targetPaceRow
         }
         .background(Color.surfaceSunken.opacity(0.85), in: RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
+    }
+
+    /// Off, or a pace to hold; the coach says when the runner drifts more than 10 s off it.
+    private var targetPaceRow: some View {
+        let perUnit = Binding<Double>(
+            // Rounded to a 5 s option and kept inside the list, so the picker always has a matching tag.
+            get: {
+                guard targetPace > 0, let first = paceOptions.first, let last = paceOptions.last else { return 0 }
+                return min(max((targetPace * unit.metersPerUnit / 1_000 / 5).rounded() * 5, first), last)
+            },
+            set: { targetPace = $0 > 0 ? $0 * 1_000 / unit.metersPerUnit : 0 }
+        )
+        return Menu {
+            Picker("Target pace", selection: perUnit) {
+                Text("Off").tag(0.0)
+                ForEach(paceOptions, id: \.self) { pace in
+                    Text("\(RunFormat.pace(pace)) \(unit.paceSymbol)").tag(pace)
+                }
+            }
+        } label: {
+            HStack(spacing: Space.x2) {
+                Label("Target pace", systemImage: "gauge.with.needle")
+                    .foregroundStyle(.ink)
+                Spacer()
+                Text(targetPace > 0 ? "\(RunFormat.pace(perUnit.wrappedValue)) \(unit.paceSymbol)" : "Off")
+                    .foregroundStyle(.inkMuted)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption)
+                    .foregroundStyle(.inkMuted)
+            }
+            .font(.subheadline.weight(.medium))
+            .padding(.horizontal, Space.x4)
+            .frame(minHeight: Dimension.hitMin)
+            .contentShape(Rectangle())
+        }
     }
 
     private func locationBanner(title: String, message: String) -> some View {
@@ -195,12 +281,29 @@ struct RunSetupView: View {
         .background(Color.trackSoft, in: RoundedRectangle(cornerRadius: Radius.md))
     }
 
+    /// The target picked here, for a run started with "Start on Watch".
+    private var watchGoal: MirrorGoal? {
+        switch runType {
+        case .distance:
+            let label = distancePresets.first { $0.meters == selectedMeters }?.label
+            return MirrorGoal(type: .distance, distance: selectedMeters, name: label)
+        case .time:
+            return MirrorGoal(type: .time, duration: TimeInterval(targetMinutes * 60), name: "\(targetMinutes) min")
+        case .intervals:
+            return MirrorGoal(type: .intervals, name: intervalPreset.name)
+        case .free:
+            return nil
+        }
+    }
+
     private var configuration: RunTracker.Configuration {
         var configuration = RunTracker.Configuration(type: runType, shoeID: shoeID, autoPause: autoPause)
+        configuration.targetPace = targetPace > 0 ? targetPace : nil
         switch runType {
         case .distance: configuration.targetDistance = selectedMeters
         case .time: configuration.targetDuration = TimeInterval(targetMinutes * 60)
-        case .free, .intervals: break
+        case .intervals: configuration.workout = intervalPreset
+        case .free: break
         }
         return configuration
     }

@@ -168,3 +168,207 @@ import SwiftData
         #expect(run.splits.count == 3)
     }
 }
+
+@Suite struct MirrorTests {
+    private func coords(_ range: Range<Int>) -> [Coordinate] {
+        range.map { Coordinate(latitude: Double($0), longitude: 0) }
+    }
+
+    @Test func routeMergesOverlappingBatches() {
+        var route = MirroredRoute()
+        route.merge(coords(0..<3), startingAt: 0)
+        route.merge(coords(2..<5), startingAt: 2)
+        route.merge(coords(1..<3), startingAt: 1)
+        #expect(route.coordinates.map(\.latitude) == [0, 1, 2, 3, 4])
+    }
+
+    @Test func routeRejectsGaps() {
+        var route = MirroredRoute()
+        route.merge(coords(0..<2), startingAt: 0)
+        #expect(route.merge(coords(5..<7), startingAt: 5) == false)
+        #expect(route.coordinates.count == 2)
+    }
+
+    @Test func elapsedExtrapolatesOnlyWhileRunning() {
+        let sent = Date(timeIntervalSince1970: 100)
+        let running = MirrorSnapshot(sentAt: sent, elapsed: 60, isPaused: false, distance: 0)
+        let paused = MirrorSnapshot(sentAt: sent, elapsed: 60, isPaused: true, distance: 0)
+        #expect(running.elapsed(at: sent.addingTimeInterval(5)) == 65)
+        #expect(paused.elapsed(at: sent.addingTimeInterval(5)) == 60)
+    }
+
+    @Test func snapshotStaysSmall() throws {
+        let snapshot = MirrorSnapshot(elapsed: 1_800, isPaused: false, distance: 5_000, heartRate: 150,
+                                      zoneSeconds: [2: 300, 3: 1_200, 4: 300], coordinates: coords(0..<100))
+        #expect(try JSONEncoder().encode(snapshot).count < 10_000)
+    }
+}
+
+@Suite struct MirrorProtocolTests {
+    @Test func truncateKeepsTheSharedPrefix() {
+        var route = MirroredRoute()
+        route.merge((0..<10).map { Coordinate(latitude: Double($0), longitude: 0) }, startingAt: 0)
+        route.truncate(to: 6)
+        #expect(route.coordinates.count == 6)
+        let merged = route.merge([Coordinate(latitude: 6, longitude: 0)], startingAt: 6)
+        #expect(merged)
+        #expect(route.coordinates.count == 7)
+    }
+
+    @Test func messagesDecodeApart() throws {
+        let command = try JSONEncoder().encode(MirrorCommand(goal: MirrorGoal(type: .distance, distance: 5_000, name: "5 km")))
+        let request = try JSONEncoder().encode(MirrorRequest(resendFrom: 12))
+        #expect((try? JSONDecoder().decode(MirrorRequest.self, from: command)) == nil)
+        #expect((try? JSONDecoder().decode(MirrorCommand.self, from: request)) == nil)
+        #expect(try JSONDecoder().decode(MirrorCommand.self, from: command).goal.distance == 5_000)
+    }
+}
+
+@Suite struct SeriesTests {
+    /// North at `speed` m/s, one point per second, with a heart rate and a climb.
+    private func line(meters: Double, speed: Double) -> [RoutePoint] {
+        let start = Date(timeIntervalSince1970: 0)
+        return (0...Int(meters / speed)).map { i in
+            RoutePoint(latitude: Double(i) * speed / 110_574, longitude: 0, altitude: Double(i) * 0.1,
+                       timestamp: start.addingTimeInterval(Double(i)), heartRate: 140)
+        }
+    }
+
+    @Test func paceSeriesMatchesSpeed() {
+        let series = RouteAnalysis.paceSeries(of: line(meters: 1_000, speed: 4), unit: .metric)
+        #expect(series.count >= 9)
+        #expect(series.allSatisfy { abs($0.value - 250) < 5 })
+    }
+
+    @Test func elevationAndHeartRateSeries() {
+        let points = line(meters: 500, speed: 5)
+        let elevation = RouteAnalysis.elevationSeries(of: points)
+        #expect(elevation.first?.value == 0)
+        #expect((elevation.last?.value ?? 0) > 9)
+        let heartRate = RouteAnalysis.heartRateSeries(of: points)
+        #expect(heartRate.allSatisfy { $0.value == 140 })
+    }
+}
+
+@Suite struct ChartDataTests {
+    @Test func stopsDontShowAsSlowPace() {
+        let start = Date(timeIntervalSince1970: 0)
+        var points: [RoutePoint] = []
+        // 500 m at 4 m/s, 90 s standing still, 500 m at 4 m/s, all one segment.
+        for i in 0...125 { points.append(RoutePoint(latitude: Double(i) * 4 / 110_574, longitude: 0, altitude: 0, timestamp: start.addingTimeInterval(Double(i)))) }
+        let stopEnd = 125 + 90
+        for i in 126...stopEnd { points.append(RoutePoint(latitude: 125 * 4 / 110_574, longitude: 0, altitude: 0, timestamp: start.addingTimeInterval(Double(i)))) }
+        for i in 1...125 { points.append(RoutePoint(latitude: Double(125 + i) * 4 / 110_574, longitude: 0, altitude: 0, timestamp: start.addingTimeInterval(Double(stopEnd + i)))) }
+        let series = RouteAnalysis.paceSeries(of: points, unit: .metric)
+        #expect(series.allSatisfy { abs($0.value - 250) < 10 })
+    }
+
+    @Test func watchChartsMatchAverageSpeed() async {
+        let start = Date(timeIntervalSince1970: 0)
+        // Route: 4 m/s. Workout: 5,000 m in 1,250 s = 4 m/s, but the route started late and is shorter.
+        let route = (0...1_000).map { i in
+            RoutePoint(latitude: Double(i) * 4 / 110_574, longitude: 0, altitude: 0, timestamp: start.addingTimeInterval(Double(i)))
+        }
+        let data = await RouteAnalysis.chartData(routeData: nil, decodedRoute: route, distance: 5_000, duration: 1_250,
+                                                 source: .watch, unit: .metric)
+        #expect(data.pace.allSatisfy { abs($0.value - 250) < 5 })
+    }
+
+    @Test func timeOfDayTitles() {
+        let calendar = Calendar.current
+        let morning = calendar.date(bySettingHour: 7, minute: 0, second: 0, of: .now)!
+        #expect(Run.timeOfDayTitle(for: morning) == "Morning Run")
+    }
+}
+
+@Suite struct CoachTests {
+    @Test func cursorWalksThroughSteps() {
+        let workout = Workout.intervals(id: "t", name: "Test", detail: "", warmup: .time(.warmup, minutes: 1), repeats: 2,
+                                        work: .distance(.run, meters: 400), rest: .time(.recover, seconds: 60), cooldown: nil)
+        var cursor = WorkoutCursor(workout: workout)
+        #expect(cursor.currentStep?.kind == .warmup)
+        #expect(cursor.advance(elapsed: 59, distance: 150).isEmpty)
+        #expect(cursor.advance(elapsed: 60, distance: 160) == [.stepStarted(workout.steps[1])])
+        #expect(cursor.remaining(elapsed: 100, distance: 360) == .distance(200))
+        #expect(cursor.advance(elapsed: 150, distance: 560) == [.stepStarted(workout.steps[2])])
+        #expect(cursor.advance(elapsed: 210, distance: 600) == [.stepStarted(workout.steps[3])])
+        #expect(cursor.advance(elapsed: 300, distance: 1_000) == [.workoutCompleted])
+        #expect(cursor.isFinished)
+    }
+
+    @Test func cursorFastForwardsWhenRestored() {
+        let workout = IntervalPresets.all[2] // Fartlek: 10 min warm-up + 10 × 30/30 + cool-down
+        var cursor = WorkoutCursor(workout: workout)
+        // 10 min warm-up, 30 s fast, 30 s easy, then 15 s into the second fast one.
+        let events = cursor.advance(elapsed: 675, distance: 3_000)
+        #expect(events.count == 3)
+        #expect(cursor.currentStep?.kind == .run)
+        #expect(cursor.remaining(elapsed: 675, distance: 3_000) == .time(15))
+    }
+
+    @Test func paceGuardWaitsAndCoolsDown() {
+        var guardian = PaceGuard(target: 330, tolerance: 10, confirmAfter: 20, cooldown: 60, recoverAfter: 5)
+        let t0 = Date(timeIntervalSince1970: 0)
+        #expect(guardian.evaluate(currentPace: 350, at: t0) == nil)
+        #expect(guardian.evaluate(currentPace: 352, at: t0.addingTimeInterval(10)) == nil)
+        #expect(guardian.evaluate(currentPace: 352, at: t0.addingTimeInterval(21)) == .tooSlow(22))
+        #expect(guardian.evaluate(currentPace: 352, at: t0.addingTimeInterval(50)) == nil)
+        // Grazing the edge of the range isn't "back on pace"; clearly inside for 5 s is.
+        #expect(guardian.evaluate(currentPace: 339, at: t0.addingTimeInterval(55)) == nil)
+        #expect(guardian.evaluate(currentPace: 332, at: t0.addingTimeInterval(56)) == nil)
+        #expect(guardian.evaluate(currentPace: 331, at: t0.addingTimeInterval(61)) == .onPace)
+        #expect(guardian.evaluate(currentPace: 331, at: t0.addingTimeInterval(62)) == nil)
+        #expect(guardian.evaluate(currentPace: nil, at: t0.addingTimeInterval(63)) == nil)
+        #expect(guardian.status == nil)
+    }
+
+    @Test func savedCursorResumesMixedWorkout() throws {
+        // 8 × 400 m: time warm-up, distance reps, time recoveries.
+        let workout = IntervalPresets.all[0]
+        var cursor = WorkoutCursor(workout: workout)
+        _ = cursor.advance(elapsed: 600, distance: 1_500)          // warm-up done
+        _ = cursor.advance(elapsed: 700, distance: 1_900)          // rep 1 done
+        _ = cursor.advance(elapsed: 790, distance: 2_000)          // recovery 1 done
+        let saved = try JSONDecoder().decode(WorkoutCursor.self, from: JSONEncoder().encode(cursor))
+        var restored = saved
+        _ = restored.advance(elapsed: 820, distance: 2_150)
+        #expect(restored.index == cursor.index)
+        #expect(restored.currentStep?.kind == .run)
+        #expect(workout.runNumber(of: restored.currentStep!) == 2)
+    }
+
+    @Test func splitNamesItsLength() {
+        let line = CoachScript.split(distance: 4_000, elapsed: 1_320, averagePace: 330, lastSplitPace: 320,
+                                     unit: .metric, splitLength: 2, includeTime: false)
+        #expect(line.hasSuffix("Last 2 kilometers at 5 minutes 20 seconds per kilometer."))
+    }
+
+    @Test func scriptReadsNaturally() {
+        #expect(CoachScript.spokenDuration(332) == "5 minutes 32 seconds")
+        #expect(CoachScript.spokenDuration(3_660) == "1 hour 1 minute")
+        #expect(CoachScript.spokenDistance(2_000, unit: .metric) == "2 kilometers")
+        let split = CoachScript.split(distance: 2_000, elapsed: 664, averagePace: 332, lastSplitPace: 330, unit: .metric)
+        #expect(split == "2 kilometers. Time 11 minutes 4 seconds. Average pace 5 minutes 32 seconds per kilometer. Last kilometer 5 minutes 30 seconds.")
+        let workout = IntervalPresets.all[0]
+        #expect(CoachScript.stepStarted(workout.steps[1], in: workout, unit: .metric) == "Interval 1 of 8. Run 400 meters.")
+        #expect(CoachScript.pace(.tooSlow(12.4), unit: .metric) == "Speed up. You're 12 seconds per kilometer behind your target.")
+    }
+
+    @Test func plansAreWellFormed() {
+        for plan in TrainingPlan.catalog {
+            let ids = plan.sessions.map(\.id)
+            #expect(Set(ids).count == ids.count)
+            for session in plan.sessions {
+                #expect(!session.steps.isEmpty)
+                for step in session.steps {
+                    switch step.goal {
+                    case .time(let seconds): #expect(seconds > 0)
+                    case .distance(let meters): #expect(meters > 0)
+                    }
+                }
+            }
+        }
+        #expect(TrainingPlan.firstFiveK.sessions.count == 18)
+        #expect(TrainingPlan.firstFiveK.nextSession(completed: ["5k-w1-s1"])?.id == "5k-w1-s2")
+    }
+}

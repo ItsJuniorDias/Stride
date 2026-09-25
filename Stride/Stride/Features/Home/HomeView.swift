@@ -10,7 +10,8 @@ struct HomeView: View {
     @AppStorage(StrideSettings.weeklyGoal) private var weeklyGoal = 20.0
     @AppStorage(StrideSettings.userName) private var userName = ""
     @Environment(\.scenePhase) private var scenePhase
-    @State private var path: [Run] = []
+    /// Mixed routes (runs and plans); a deleted run's screen shows its own "Run deleted" state.
+    @State private var path = NavigationPath()
     /// Refreshed on foreground and at midnight, so the week, month and greeting don't go stale.
     @State private var now = Date.now
 
@@ -30,6 +31,8 @@ struct HomeView: View {
                     Button("Start a run") { selectedTab = .run }
                         .buttonStyle(.stridePrimary)
 
+                    ActivePlanCard()
+
                     if let latest = runs.first {
                         VStack(alignment: .leading, spacing: Space.x3) {
                             Text("Latest run").font(.headline).foregroundStyle(.ink)
@@ -47,8 +50,8 @@ struct HomeView: View {
             .background(Color.surface)
             .navigationTitle(greeting)
             .navigationDestination(for: Run.self) { RunDetailView(run: $0) }
+            .planDestinations()
         }
-        .onChange(of: runs) { path.removeAll { $0.isDeleted || $0.modelContext == nil } }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { now = .now }
         }
@@ -139,5 +142,6 @@ struct HomeView: View {
 
 #Preview {
     HomeView(selectedTab: .constant(.home))
+        .environment(RunTracker())
         .modelContainer(for: [Run.self, Shoe.self], inMemory: true)
 }

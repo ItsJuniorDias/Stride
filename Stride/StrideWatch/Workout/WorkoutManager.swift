@@ -109,6 +109,16 @@ final class WorkoutManager: NSObject {
     @ObservationIgnored private var goalReached = false
     @ObservationIgnored private var isFinishing = false
     @ObservationIgnored private var lastJournalWrite = Date.distantPast
+    @ObservationIgnored private var mirrorTask: Task<Void, Never>?
+    @ObservationIgnored private var remirrorTask: Task<Void, Never>?
+    @ObservationIgnored private var sendFailures = 0
+    /// Route coordinates the iPhone has confirmed receiving.
+    @ObservationIgnored private var sentCoordinateCount = 0
+    /// Route indices restart after a recovery; iPhone keeps the first `routeEpochBase` of the old epoch.
+    @ObservationIgnored private var routeEpoch = UUID()
+    @ObservationIgnored private var routeEpochBase = 0
+    /// Started from iPhone's "Start on Watch": the goal chosen there may follow over the mirrored session.
+    @ObservationIgnored private var startedFromCompanion = false
 
     // MARK: Authorization
 
@@ -200,6 +210,15 @@ final class WorkoutManager: NSObject {
     /// Returns to the start list after the summary.
     func reset() {
         countdownTask?.cancel()
+        mirrorTask?.cancel()
+        mirrorTask = nil
+        remirrorTask?.cancel()
+        remirrorTask = nil
+        sendFailures = 0
+        sentCoordinateCount = 0
+        routeEpoch = UUID()
+        routeEpochBase = 0
+        startedFromCompanion = false
         stopLocationUpdates()
         session = nil
         builder = nil
@@ -265,6 +284,30 @@ final class WorkoutManager: NSObject {
         }
         guard self.session === session else { return }
         WKInterfaceDevice.current().play(.start)
+        startMirroring(session)
+    }
+
+    /// Called when iPhone asked to start a workout ("Start on Watch").
+    func startFromCompanion() async {
+        switch phase {
+        case .running, .paused:
+            // Already running: the iPhone lost the live view, so mirror again.
+            if let session { startMirroring(session) }
+        case .countdown:
+            return
+        case .ended, .idle:
+            if phase == .ended { reset() }
+            if healthStore.authorizationStatus(for: .workoutType()) == .notDetermined
+                || locationManager.authorizationStatus == .notDetermined {
+                await requestAuthorization()
+            }
+            guard canSaveWorkouts else {
+                fail("Allow Stride to save workouts in Settings › Health › Data Access.")
+                return
+            }
+            start(Goal())
+            startedFromCompanion = phase != .idle
+        }
     }
 
     private func finish(session: HKWorkoutSession, builder: HKLiveWorkoutBuilder, at end: Date) async {
@@ -295,6 +338,10 @@ final class WorkoutManager: NSObject {
         savedToHealth = workout != nil
         summary = transfer
         phase = .ended
+        mirrorTask?.cancel()
+        mirrorTask = nil
+        remirrorTask?.cancel()
+        remirrorTask = nil
         clearJournal()
         // A workout that never collected anything isn't worth a Run on iPhone.
         if builder.startDate != nil, duration > 0 {
@@ -318,6 +365,10 @@ final class WorkoutManager: NSObject {
         builder.dataSource = HKLiveWorkoutDataSource(healthStore: healthStore, workoutConfiguration: session.workoutConfiguration)
         attach(session: session, builder: builder)
         restoreJournal()
+        // The recovered route may be shorter than what iPhone already has: start a new epoch at its length.
+        routeEpoch = UUID()
+        routeEpochBase = route.count
+        sentCoordinateCount = route.count
         startDate = builder.startDate ?? startDate
         splitUnit = UnitSystem(rawValue: UserDefaults.standard.string(forKey: StrideSettings.unitSystem) ?? "") ?? .metric
         completedSplits = Int(distance / splitUnit.metersPerUnit)
@@ -332,6 +383,7 @@ final class WorkoutManager: NSObject {
             lastHeartRateDate = .now
         }
         startLocationUpdates()
+        startMirroring(session)
     }
 
     /// Route, zones and goal on disk, so a recovered workout keeps what it had collected.
@@ -384,6 +436,7 @@ final class WorkoutManager: NSObject {
             if phase == .paused { segment += 1 }
             lastHeartRateDate = date
             phase = .running
+            sendSnapshot()
         case .paused:
             guard phase == .running else { return }
             accumulateZoneTime(until: date)
@@ -391,6 +444,7 @@ final class WorkoutManager: NSObject {
             lastSpeedFixDate = nil
             currentSpeed = 0
             phase = .paused
+            sendSnapshot()
         case .ended, .stopped:
             guard let builder else { return }
             isEnding = true
@@ -442,6 +496,113 @@ final class WorkoutManager: NSObject {
         defer { lastHeartRateDate = phase == .running ? date : nil }
         guard phase == .running, let last = lastHeartRateDate, let zone = currentZone else { return }
         zoneSeconds[zone, default: 0] += max(date.timeIntervalSince(last), 0)
+    }
+
+    // MARK: Mirroring to iPhone
+
+    /// Shows the workout live on iPhone. Without a reachable iPhone this fails quietly;
+    /// the finished run still reaches iPhone through WatchConnector.
+    private func startMirroring(_ session: HKWorkoutSession) {
+        Task { [weak self] in
+            try? await session.startMirroringToCompanionDevice()
+            guard let self, self.session === session else { return }
+            self.mirrorTask?.cancel()
+            self.mirrorTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    self?.sendSnapshot()
+                    try? await Task.sleep(for: .seconds(2))
+                }
+            }
+        }
+    }
+
+    private func sendSnapshot() {
+        guard let session, phase == .running || phase == .paused else { return }
+        // At most 100 coordinates per snapshot keeps well under HealthKit's 100 KB / 10 s limit.
+        let start = min(sentCoordinateCount, route.count)
+        let end = min(start + 100, route.count)
+        let batch = route[start..<end].map { Coordinate(latitude: $0.latitude, longitude: $0.longitude) }
+        let snapshot = MirrorSnapshot(
+            elapsed: elapsedTime(),
+            isPaused: phase == .paused,
+            distance: distance,
+            heartRate: heartRate,
+            averageHeartRate: averageHeartRate,
+            calories: activeEnergy,
+            currentSpeed: currentPace(unit: .metric).map { 1_000 / $0 },
+            zoneSeconds: Dictionary(uniqueKeysWithValues: zoneSeconds.map { ($0.key.rawValue, $0.value) }),
+            coordinates: batch,
+            firstCoordinateIndex: start,
+            routeEpoch: routeEpoch,
+            routeEpochBase: routeEpochBase,
+            goalName: goal.name,
+            goalDistance: goal.distance,
+            goalDuration: goal.duration
+        )
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        Task { [weak self] in
+            do {
+                try await session.sendToRemoteWorkoutSession(data: data)
+                guard let self, self.session === session else { return }
+                self.sentCoordinateCount = max(self.sentCoordinateCount, end)
+                self.sendFailures = 0
+            } catch {
+                // Not mirroring right now; the next snapshot retries from the same coordinate.
+                guard let self, self.session === session else { return }
+                self.sendFailures += 1
+                if self.sendFailures >= 5 { self.scheduleRemirror(for: session) }
+            }
+        }
+    }
+
+    fileprivate func handleRemoteData(_ data: [Data], from session: HKWorkoutSession) {
+        guard session === self.session else { return }
+        let decoder = JSONDecoder()
+        for item in data {
+            if let request = try? decoder.decode(MirrorRequest.self, from: item) {
+                sentCoordinateCount = min(max(request.resendFrom, 0), route.count)
+            } else if let command = try? decoder.decode(MirrorCommand.self, from: item) {
+                applyCompanionGoal(command.goal)
+            }
+        }
+    }
+
+    /// The goal picked on iPhone for a run started with "Start on Watch". Only replaces a free run
+    /// the Watch started for that request, never a goal the runner picked on the Watch.
+    private func applyCompanionGoal(_ companionGoal: MirrorGoal) {
+        guard startedFromCompanion, goal.type == .free else { return }
+        switch phase {
+        case .countdown, .running, .paused: break
+        default: return
+        }
+        goal = Goal(type: companionGoal.type, distance: companionGoal.distance,
+                    duration: companionGoal.duration, name: companionGoal.name)
+        goalReached = false
+        lastJournalWrite = .distantPast
+        sendSnapshot()
+    }
+
+    /// The mirrored session dropped (iPhone out of range, or its app was closed): mirror again,
+    /// backing off, until it works or the run ends.
+    fileprivate func scheduleRemirror(for session: HKWorkoutSession) {
+        guard session === self.session, phase == .running || phase == .paused, !isEnding, remirrorTask == nil else { return }
+        remirrorTask = Task { [weak self] in
+            let delays: [Double] = [5, 15, 30, 60]
+            var attempt = 0
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(delays[min(attempt, delays.count - 1)]))
+                attempt += 1
+                guard let self, self.session === session, self.phase == .running || self.phase == .paused else { return }
+                do {
+                    try await session.startMirroringToCompanionDevice()
+                    self.sendFailures = 0
+                    self.remirrorTask = nil
+                    return
+                } catch {
+                    continue
+                }
+            }
+        }
     }
 
     // MARK: Location
@@ -533,6 +694,14 @@ extension WorkoutManager: HKWorkoutSessionDelegate {
 
     nonisolated func workoutSession(_ workoutSession: HKWorkoutSession, didFailWithError error: Error) {
         Task { @MainActor in self.handleFailure(of: workoutSession) }
+    }
+
+    nonisolated func workoutSession(_ workoutSession: HKWorkoutSession, didReceiveDataFromRemoteWorkoutSession data: [Data]) {
+        Task { @MainActor in self.handleRemoteData(data, from: workoutSession) }
+    }
+
+    nonisolated func workoutSession(_ workoutSession: HKWorkoutSession, didDisconnectFromRemoteDeviceWithError error: Error?) {
+        Task { @MainActor in self.scheduleRemirror(for: workoutSession) }
     }
 }
 

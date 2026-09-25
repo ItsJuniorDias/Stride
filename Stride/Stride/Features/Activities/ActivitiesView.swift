@@ -8,6 +8,7 @@ struct ActivitiesView: View {
     @Query(sort: \Run.startDate, order: .reverse) private var runs: [Run]
     @AppStorage(StrideSettings.unitSystem) private var unit: UnitSystem = .metric
     @State private var path: [Run] = []
+    @State private var addingRun = false
 
     private var months: [(month: Date, runs: [Run])] {
         let calendar = Calendar.current
@@ -20,11 +21,15 @@ struct ActivitiesView: View {
         NavigationStack(path: $path) {
             Group {
                 if runs.isEmpty {
-                    ContentUnavailableView(
-                        "No runs yet",
-                        systemImage: "figure.run",
-                        description: Text("Your runs will show up here after you finish one.")
-                    )
+                    ContentUnavailableView {
+                        Label("No runs yet", systemImage: "figure.run")
+                    } description: {
+                        Text("Your runs will show up here after you finish one.")
+                    } actions: {
+                        Button("Add a run manually") { addingRun = true }
+                            .buttonStyle(.strideSecondary)
+                            .fixedSize()
+                    }
                 } else {
                     List {
                         ForEach(months, id: \.month) { group in
@@ -50,6 +55,14 @@ struct ActivitiesView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.surface)
             .navigationTitle("Activities")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { addingRun = true } label: {
+                        Label("Add run", systemImage: "plus")
+                    }
+                }
+            }
+            .sheet(isPresented: $addingRun) { ManualRunView() }
             .navigationDestination(for: Run.self) { RunDetailView(run: $0) }
         }
         .onChange(of: runs) { path.removeAll { $0.isDeleted || $0.modelContext == nil } }

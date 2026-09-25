@@ -88,6 +88,115 @@ public enum RouteAnalysis {
         return result
     }
 
+    /// A value at a distance along the route, for charts.
+    public struct SeriesPoint: Identifiable, Hashable, Sendable {
+        /// Meters from the start.
+        public let distance: Double
+        public let value: Double
+        public var id: Double { distance }
+
+        public init(distance: Double, value: Double) {
+            self.distance = distance
+            self.value = value
+        }
+    }
+
+    /// Pace (seconds per unit) every `bucket` meters, smoothed over three buckets.
+    /// Buckets never span a pause, and standing still (under 0.5 m/s, e.g. at a light without
+    /// pausing) is left out, so a stop doesn't show as one very slow stretch.
+    public static func paceSeries(of points: [RoutePoint], unit: UnitSystem, bucket: Double = 100, scale: Double = 1) -> [SeriesPoint] {
+        var raw: [SeriesPoint] = []
+        var covered = 0.0, bucketDistance = 0.0, bucketTime = 0.0
+        for (a, b) in pairs(points) {
+            let d = a.location.distance(from: b.location) * scale
+            let dt = b.timestamp.timeIntervalSince(a.timestamp)
+            guard d > 0, dt > 0, d / dt >= 0.5 else { continue }
+            covered += d
+            bucketDistance += d
+            bucketTime += dt
+            if bucketDistance >= bucket {
+                raw.append(SeriesPoint(distance: covered, value: bucketTime / (bucketDistance / unit.metersPerUnit)))
+                bucketDistance = 0
+                bucketTime = 0
+            }
+        }
+        return smoothed(raw, window: 3)
+    }
+
+    /// Altitude every `bucket` meters.
+    public static func elevationSeries(of points: [RoutePoint], bucket: Double = 50, scale: Double = 1) -> [SeriesPoint] {
+        guard let first = points.first else { return [] }
+        var result = [SeriesPoint(distance: 0, value: first.altitude)]
+        var covered = 0.0, next = bucket
+        for (a, b) in pairs(points) {
+            covered += a.location.distance(from: b.location) * scale
+            if covered >= next {
+                result.append(SeriesPoint(distance: covered, value: b.altitude))
+                next = covered + bucket
+            }
+        }
+        return result
+    }
+
+    /// Average heart rate every `bucket` meters where the route carries heart rate, smoothed over five buckets.
+    public static func heartRateSeries(of points: [RoutePoint], bucket: Double = 100, scale: Double = 1) -> [SeriesPoint] {
+        var result: [SeriesPoint] = []
+        var covered = 0.0, bucketDistance = 0.0
+        var rates: [Double] = []
+        for (a, b) in pairs(points) {
+            let d = a.location.distance(from: b.location) * scale
+            covered += d
+            bucketDistance += d
+            if let bpm = b.heartRate { rates.append(bpm) }
+            if bucketDistance >= bucket {
+                if !rates.isEmpty {
+                    result.append(SeriesPoint(distance: covered, value: rates.reduce(0, +) / Double(rates.count)))
+                }
+                bucketDistance = 0
+                rates = []
+            }
+        }
+        return smoothed(result, window: 5)
+    }
+
+    private static func smoothed(_ series: [SeriesPoint], window: Int) -> [SeriesPoint] {
+        guard series.count > window else { return series }
+        let half = window / 2
+        return series.indices.map { index in
+            let range = max(index - half, 0)...min(index + half, series.count - 1)
+            let average = series[range].reduce(0) { $0 + $1.value } / Double(range.count)
+            return SeriesPoint(distance: series[index].distance, value: average)
+        }
+    }
+
+    /// Everything the run detail screen draws from the route, computed off the main actor.
+    public struct ChartData: Sendable {
+        public var route: [RoutePoint]
+        /// Recomputed splits for miles; nil for kilometers, which use the stored splits.
+        public var imperialSplits: [Split]?
+        public var pace: [SeriesPoint]
+        public var elevation: [SeriesPoint]
+        public var heartRate: [SeriesPoint]
+    }
+
+    /// Decodes the route (unless it's already decoded) and builds the chart series and mile splits.
+    @concurrent
+    public static func chartData(routeData: Data?, decodedRoute: [RoutePoint], distance: Double, duration: TimeInterval,
+                                 source: RunSource, unit: UnitSystem) async -> ChartData {
+        let route = decodedRoute.isEmpty
+            ? (routeData.flatMap { try? JSONDecoder().decode([RoutePoint].self, from: $0) } ?? [])
+            : decodedRoute
+        let chartScale = Run.chartScale(distance: distance, duration: duration, route: route, source: source)
+        let splitScale = Run.splitScale(distance: distance, route: route, source: source)
+        return ChartData(
+            route: route,
+            imperialSplits: unit == .imperial ? splits(from: route, unit: unit, scale: splitScale) : nil,
+            pace: paceSeries(of: route, unit: unit, scale: chartScale),
+            elevation: elevationSeries(of: route, scale: chartScale),
+            heartRate: heartRateSeries(of: route, scale: chartScale)
+        )
+    }
+
     /// At most `maxPoints` coordinates, evenly sampled, for thumbnails.
     public static func preview(of points: [RoutePoint], maxPoints: Int = 80) -> [Coordinate] {
         guard !points.isEmpty else { return [] }

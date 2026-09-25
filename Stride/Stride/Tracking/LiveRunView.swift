@@ -54,6 +54,7 @@ struct LiveRunView: View {
             old != new ? .impact(weight: .light) : nil
         }
         .sensoryFeedback(.impact(weight: .light), trigger: tracker.splitEvents)
+        .sensoryFeedback(.impact(weight: .heavy), trigger: tracker.coach.stepEvents)
         .sensoryFeedback(.success, trigger: tracker.goalEvents)
         .sensoryFeedback(.warning, trigger: tracker.autoPauseEvents)
         .confirmationDialog("Discard this run?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
@@ -92,7 +93,7 @@ struct LiveRunView: View {
                 Spacer(minLength: Space.x5)
                 metricGrid
                     .padding(.horizontal, Space.x4)
-                goalBar
+                coachSection
                     .padding(.horizontal, Space.x4)
                     .padding(.top, Space.x5)
                 Spacer(minLength: Space.x5)
@@ -113,6 +114,8 @@ struct LiveRunView: View {
         HStack(spacing: Space.x2) {
             if tracker.phase == .paused {
                 StatusChip(tracker.wasRestored ? "Run restored · paused" : "Paused", background: .trackSoft)
+            } else if tracker.authorizationDenied {
+                StatusChip("Location off", indicator: .warning)
             } else if tracker.accuracyLimited {
                 StatusChip("Precise location off", indicator: .warning)
             } else if tracker.isAutoPaused {
@@ -153,6 +156,26 @@ struct LiveRunView: View {
             MetricView("Avg pace", value: RunFormat.pace(tracker.averagePace), unit: unit.paceSymbol, alignment: .center)
             MetricView("Current pace", value: RunFormat.pace(tracker.currentPace), unit: unit.paceSymbol, alignment: .center)
             MetricView("Calories", value: "\(Int(tracker.calories))", unit: "kcal", alignment: .center)
+        }
+    }
+
+    /// The current workout step, or the goal bar; plus the target-pace status when there's a target.
+    @ViewBuilder private var coachSection: some View {
+        let coach = tracker.coach
+        VStack(spacing: Space.x3) {
+            if let cursor = coach.cursor {
+                if let step = cursor.currentStep {
+                    WorkoutStepCard(step: step, workout: cursor.workout, next: cursor.nextStep,
+                                    remaining: coach.stepRemaining, progress: coach.stepProgress, unit: unit)
+                } else {
+                    StatusChip("Workout complete · keep going or finish", indicator: .success)
+                }
+            } else {
+                goalBar
+            }
+            if let status = coach.paceStatus {
+                PaceStatusChip(status: status, unit: unit)
+            }
         }
     }
 
@@ -262,41 +285,6 @@ private struct CountdownView: View {
     }
 }
 
-// MARK: - Live map
-
-private struct LiveRouteMap: View {
-    let route: [RoutePoint]
-    @State private var position: MapCameraPosition = .userLocation(followsHeading: false, fallback: .automatic)
-
-    private struct Stretch: Identifiable {
-        let id: Int
-        let coordinates: [CLLocationCoordinate2D]
-    }
-
-    /// One polyline per segment so paused gaps aren't joined. Long routes are thinned for drawing.
-    private var stretches: [Stretch] {
-        let step = max(route.count / 1_500, 1)
-        let thinned = stride(from: 0, to: route.count, by: step).map { route[$0] } + (route.last.map { [$0] } ?? [])
-        return Dictionary(grouping: thinned, by: \.segment)
-            .sorted { $0.key < $1.key }
-            .map { Stretch(id: $0.key, coordinates: $0.value.map(\.coordinate)) }
-    }
-
-    var body: some View {
-        Map(position: $position) {
-            ForEach(stretches) { stretch in
-                MapPolyline(coordinates: stretch.coordinates)
-                    .stroke(Color.track, style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
-            }
-            UserAnnotation()
-        }
-        .mapStyle(.standard(pointsOfInterest: .excludingAll))
-        .mapControls {
-            MapUserLocationButton()
-        }
-    }
-}
-
 // MARK: - GPS chip
 
 struct GPSChip: View {
@@ -307,6 +295,104 @@ struct GPSChip: View {
         case .searching: StatusChip("Searching for GPS", indicator: .lineStrong)
         case .weak: StatusChip("GPS weak", indicator: .warning)
         case .strong: StatusChip("GPS strong", indicator: .success)
+        }
+    }
+}
+
+// MARK: - Coach
+
+/// The step being run: what it is, how much is left, and what comes next.
+struct WorkoutStepCard: View {
+    let step: WorkoutStep
+    let workout: Workout
+    let next: WorkoutStep?
+    let remaining: WorkoutStep.Goal?
+    let progress: Double
+    let unit: UnitSystem
+
+    private var color: Color {
+        switch step.kind {
+        case .run: .track
+        case .recover: .lane
+        case .warmup, .cooldown: .inkMuted
+        }
+    }
+
+    private var title: String {
+        if let number = workout.runNumber(of: step), workout.runStepCount > 1 {
+            return "\(step.kind.title) · \(number) of \(workout.runStepCount)"
+        }
+        return step.kind.title
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.x2) {
+            HStack(alignment: .firstTextBaseline) {
+                HStack(spacing: Space.x2) {
+                    Circle().fill(color).frame(width: 10, height: 10)
+                    Text(title).font(.headline).foregroundStyle(.ink)
+                }
+                Spacer()
+                Text(remainingText)
+                    .font(.metricSmall)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                    .foregroundStyle(.ink)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.surfaceSunken)
+                    Capsule().fill(color).frame(width: geo.size.width * min(max(progress, 0), 1))
+                }
+            }
+            .frame(height: 8)
+            if let next {
+                Text("Next: \(next.kind.title) \(goalText(next.goal))")
+                    .font(.caption)
+                    .foregroundStyle(.inkMuted)
+            }
+        }
+        .padding(Space.x4)
+        .background(Color.surfaceRaised, in: RoundedRectangle(cornerRadius: Radius.md))
+        .accessibilityElement(children: .combine)
+        .animation(.snappy, value: progress)
+    }
+
+    private var remainingText: String {
+        switch remaining {
+        // Rounded up: the card reads 0 only once the step is actually done.
+        case .time(let seconds): RunFormat.duration(seconds.rounded(.up))
+        case .distance(let meters):
+            if meters < 1_000 && unit == .metric {
+                "\(Int(meters.rounded(.up))) m"
+            } else {
+                "\(RunFormat.distance((meters / unit.metersPerUnit * 100).rounded(.up) / 100 * unit.metersPerUnit, unit: unit)) \(unit.distanceSymbol)"
+            }
+        case nil: RunFormat.empty
+        }
+    }
+
+    private func goalText(_ goal: WorkoutStep.Goal) -> String {
+        switch goal {
+        case .time(let seconds): seconds < 60 ? "\(Int(seconds)) s" : RunFormat.duration(seconds)
+        case .distance(let meters): meters < 1_000 && unit == .metric ? "\(Int(meters)) m" : "\(RunFormat.distance(meters, unit: unit, fractionDigits: 1)) \(unit.distanceSymbol)"
+        }
+    }
+}
+
+/// On target, or how far off it: words first, color only reinforces.
+struct PaceStatusChip: View {
+    let status: PaceGuard.Status
+    let unit: UnitSystem
+
+    var body: some View {
+        switch status {
+        case .onPace:
+            StatusChip("On target pace", indicator: .success)
+        case .tooSlow(let seconds):
+            StatusChip("Speed up · \(Int(seconds.rounded())) s\(unit.paceSymbol) behind", indicator: .warning)
+        case .tooFast(let seconds):
+            StatusChip("Ease off · \(Int(seconds.rounded())) s\(unit.paceSymbol) ahead", indicator: .lane)
         }
     }
 }

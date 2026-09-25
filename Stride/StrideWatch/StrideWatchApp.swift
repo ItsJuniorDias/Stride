@@ -1,3 +1,4 @@
+import HealthKit
 import SwiftUI
 import WatchKit
 
@@ -25,6 +26,11 @@ struct StrideWatchApp: App {
 }
 
 final class WatchAppDelegate: NSObject, WKApplicationDelegate {
+    /// iPhone asked to start a workout ("Start on Apple Watch").
+    func handle(_ workoutConfiguration: HKWorkoutConfiguration) {
+        Task { await WorkoutManager.shared.startFromCompanion() }
+    }
+
     /// watchOS relaunched the app during a workout after it crashed or was terminated.
     func handleActiveWorkoutRecovery() {
         Task { await WorkoutManager.shared.recoverActiveWorkout() }

@@ -28,7 +28,16 @@ final class RunTracker {
         var workoutName: String?
         var shoeID: UUID?
         var autoPause = true
+        /// Structured steps to follow: an interval preset or a training-plan session.
+        var workout: Workout?
+        /// Seconds per kilometer to hold; the coach says when the runner drifts off it.
+        var targetPace: Double?
+        /// The training-plan session this run is for.
+        var planSessionID: String?
     }
+
+    /// Voice, workout steps and pace alerts for the current run.
+    let coach = RunCoach()
 
     enum GPSQuality {
         case searching, weak, strong
@@ -81,6 +90,18 @@ final class RunTracker {
 
     var calories: Double { Run.estimatedCalories(distance: distance, weightKg: weightKg) }
 
+    /// The clock workout steps run on: moving time plus time auto-paused, minus manual pauses.
+    private var stepClock: TimeInterval {
+        elapsed + autoPausedTime + (autoPausedSince.map { max(Date.now.timeIntervalSince($0), 0) } ?? 0)
+    }
+
+    private func endAutoPauseInterval() {
+        if let autoPausedSince {
+            autoPausedTime += max(Date.now.timeIntervalSince(autoPausedSince), 0)
+        }
+        autoPausedSince = nil
+    }
+
     var averagePace: Double? {
         RunFormat.paceSeconds(distance: distance, duration: elapsed, unit: unit)
     }
@@ -117,6 +138,12 @@ final class RunTracker {
     @ObservationIgnored private var routeCountAtSlowStart = 0
     /// Timestamp of the last fix that passed the accuracy filters; a gap resets the slow window.
     @ObservationIgnored private var lastAcceptedFixTime: Date?
+    /// Time spent auto-paused. Workout steps count it (a recovery taken standing still still ends),
+    /// moving time doesn't.
+    @ObservationIgnored private var autoPausedTime: TimeInterval = 0
+    @ObservationIgnored private var autoPausedSince: Date?
+    /// The plan session this run marked done, so discarding the run can undo it.
+    @ObservationIgnored private var newlyCompletedSessionID: String?
     /// Auto-pause never back-dates further than this, so an old slow window can't erase real running.
     private static let maxAutoPauseBackdate: TimeInterval = 20
 
@@ -181,10 +208,14 @@ final class RunTracker {
     func pause() {
         guard phase == .running, !isDismissing else { return }
         closeSegment(at: .now)
+        endAutoPauseInterval()
+        coach.sync(stepClock: stepClock, distance: distance)
         isAutoPaused = false
         slowSince = nil
         lastAcceptedFixTime = nil
+        currentSpeed = 0
         phase = .paused
+        coach.paused()
         checkpoint()
     }
 
@@ -199,6 +230,7 @@ final class RunTracker {
         lastAcceptedFixTime = nil
         wasRestored = false
         phase = .running
+        coach.resumed()
         checkpoint()
     }
 
@@ -206,6 +238,9 @@ final class RunTracker {
     func finish(in context: ModelContext) {
         guard phase == .running || phase == .paused, !isDismissing else { return }
         closeSegment(at: .now)
+        endAutoPauseInterval()
+        // The last step may have ended between clock ticks; catch up before checking completion.
+        coach.sync(stepClock: stepClock, distance: distance)
         stopRecording()
 
         let run = Run(startDate: startDate ?? .now, duration: elapsed, distance: distance, type: configuration.type)
@@ -216,7 +251,14 @@ final class RunTracker {
         run.duration = elapsed
         run.distance = distance
         run.calories = calories
-        run.workoutName = configuration.workoutName
+        run.workoutName = configuration.workoutName ?? configuration.workout?.name
+        run.planSessionID = configuration.planSessionID
+        // A plan session counts as done when every step of it was completed.
+        if let sessionID = configuration.planSessionID, coach.workoutComplete, !PlanProgress.completed.contains(sessionID) {
+            PlanProgress.markCompleted(sessionID)
+            newlyCompletedSessionID = sessionID
+        }
+        coach.finished(distance: distance, elapsed: elapsed)
         if let shoeID = configuration.shoeID {
             let descriptor = FetchDescriptor<Shoe>(predicate: #Predicate { $0.id == shoeID })
             run.shoe = try? context.fetch(descriptor).first
@@ -233,12 +275,17 @@ final class RunTracker {
     func discard() {
         stopRecording()
         clearCheckpoint()
+        coach.silence()
         isDismissing = true
     }
 
     /// Closes the summary and marks its already-saved run for deletion. The run is deleted in
     /// ``takeRunPendingDeletion()`` once the cover has finished dismissing, so no view renders a deleted model.
     func discardSaved(_ run: Run) {
+        // A discarded run doesn't count toward the plan.
+        if let sessionID = newlyCompletedSessionID, run.planSessionID == sessionID {
+            PlanProgress.set(sessionID, done: false)
+        }
         runPendingDeletion = run
         reset()
     }
@@ -273,6 +320,10 @@ final class RunTracker {
         lastValidAltitude = nil
         completedSplits = 0
         goalReached = false
+        autoPausedTime = 0
+        autoPausedSince = nil
+        newlyCompletedSessionID = nil
+        coach.reset(stopVoice: false)
         if !wantsPreview { stopLocationUpdates() }
     }
 
@@ -283,6 +334,7 @@ final class RunTracker {
         startDate = start
         segmentStart = start
         phase = .running
+        coach.begin(configuration, unit: unit)
         startClock()
         checkpoint()
     }
@@ -303,6 +355,15 @@ final class RunTracker {
         if let progress = goalProgress, progress >= 1, !goalReached {
             goalReached = true
             goalEvents += 1
+        }
+
+        if phase == .running {
+            if isAutoPaused {
+                coach.tickSteps(stepClock: stepClock, distance: distance)
+            } else {
+                coach.tick(elapsed: elapsed, stepClock: stepClock, distance: distance,
+                           currentPace: currentPace, averagePace: averagePace)
+            }
         }
 
         // A stationary report that arrived before this segment (while paused, or during the
@@ -482,8 +543,12 @@ final class RunTracker {
         if isAutoPaused {
             guard speed > 1.3 else { return true }
             isAutoPaused = false
+            endAutoPauseInterval()
             openSegment(at: .now)
+            // Start current pace from this fix, not from the standing speeds before the pause.
+            currentSpeed = speed
             autoPauseEvents += 1
+            coach.autoResumed()
             checkpoint()
             return false
         }
@@ -513,6 +578,7 @@ final class RunTracker {
     private func autoPause() {
         let floor = Date.now.addingTimeInterval(-Self.maxAutoPauseBackdate)
         if let slowSince, slowSince >= floor {
+            autoPausedSince = slowSince
             closeSegment(at: slowSince)
             distance = distanceAtSlowStart
             if route.count > routeCountAtSlowStart {
@@ -520,8 +586,9 @@ final class RunTracker {
             }
         } else {
             // Stationary with no fix yet in this segment means no movement since it opened.
-            let stoppedAt = lastPointInSegment?.timestamp ?? segmentStart ?? .now
-            closeSegment(at: max(stoppedAt, floor))
+            let stoppedAt = max(lastPointInSegment?.timestamp ?? segmentStart ?? .now, floor)
+            autoPausedSince = stoppedAt
+            closeSegment(at: stoppedAt)
         }
         // The rollback can undo a split or goal crossed inside the slow window; they fire again later.
         completedSplits = min(completedSplits, Int(distance / unit.metersPerUnit))
@@ -530,6 +597,7 @@ final class RunTracker {
         slowSince = nil
         currentSpeed = 0
         autoPauseEvents += 1
+        coach.autoPaused()
         checkpoint()
     }
 
@@ -546,6 +614,9 @@ final class RunTracker {
         var completedSplits: Int
         var goalReached: Bool
         var lastValidAltitude: Double?
+        /// Time auto-paused so far, including an auto-pause still open at `savedAt`.
+        var autoPausedTime: TimeInterval?
+        var coach: RunCoach.Snapshot?
         var savedAt: Date
     }
 
@@ -568,6 +639,8 @@ final class RunTracker {
             completedSplits: completedSplits,
             goalReached: goalReached,
             lastValidAltitude: lastValidAltitude,
+            autoPausedTime: autoPausedTime + (autoPausedSince.map { max(now.timeIntervalSince($0), 0) } ?? 0),
+            coach: coach.snapshot,
             savedAt: now
         )
         do {
@@ -602,8 +675,12 @@ final class RunTracker {
         goalReached = checkpoint.goalReached
         lastValidAltitude = checkpoint.lastValidAltitude
         segmentStart = nil
+        autoPausedTime = checkpoint.autoPausedTime ?? 0
+        autoPausedSince = nil
         wasRestored = true
         phase = .paused
+        coach.restore(configuration, unit: unit, snapshot: checkpoint.coach,
+                      elapsed: accumulated, stepClock: accumulated + autoPausedTime, distance: distance)
         startLocationUpdates()
     }
 }

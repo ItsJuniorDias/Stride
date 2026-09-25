@@ -28,6 +28,8 @@ public final class Run {
     public var previewData: Data?
     /// Seconds per heart-rate zone, keyed by zone number, when heart rate was recorded.
     public var zoneData: Data?
+    /// The training-plan session this run completed, if any.
+    public var planSessionID: String?
     /// Where the run was recorded: "iphone" or "watch".
     public var sourceRaw: String = RunSource.iPhone.rawValue
     public var shoe: Shoe?
@@ -110,6 +112,17 @@ public final class Run {
         return RouteAnalysis.splits(from: points, unit: unit, scale: Self.splitScale(distance: distance, route: points, source: source))
     }
 
+    /// Charts for Watch runs match Apple Watch's average speed rather than its total distance: the route
+    /// can start late (GPS lock) or miss a stretch, and stretching by distance would make every
+    /// stretch look faster than it was.
+    static func chartScale(distance: Double, duration: TimeInterval, route: [RoutePoint], source: RunSource) -> Double {
+        guard source == .watch else { return 1 }
+        let routeDistance = RouteAnalysis.distance(of: route)
+        let routeTime = RouteAnalysis.movingTime(of: route)
+        guard routeDistance > 0, routeTime > 0, distance > 0, duration > 0 else { return 1 }
+        return min(max((distance / duration) / (routeDistance / routeTime), 0.5), 2)
+    }
+
     /// Watch runs report Apple Watch's workout distance, which is more accurate than the raw GPS route;
     /// splits are stretched to add up to it. iPhone runs use the route as recorded.
     static func splitScale(distance: Double, route: [RoutePoint], source: RunSource) -> Double {
@@ -122,12 +135,17 @@ public final class Run {
     /// The workout name, or a time-of-day title like "Morning Run".
     public var title: String {
         if let workoutName, !workoutName.isEmpty { return workoutName }
-        switch Calendar.current.component(.hour, from: startDate) {
-        case 5..<11: return "Morning Run"
-        case 11..<14: return "Lunch Run"
-        case 14..<18: return "Afternoon Run"
-        case 18..<22: return "Evening Run"
-        default: return "Night Run"
+        return Self.timeOfDayTitle(for: startDate)
+    }
+
+    /// "Morning Run", "Lunch Run", "Afternoon Run", "Evening Run" or "Night Run".
+    public static func timeOfDayTitle(for date: Date) -> String {
+        switch Calendar.current.component(.hour, from: date) {
+        case 5..<11: "Morning Run"
+        case 11..<14: "Lunch Run"
+        case 14..<18: "Afternoon Run"
+        case 18..<22: "Evening Run"
+        default: "Night Run"
         }
     }
 

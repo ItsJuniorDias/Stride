@@ -59,20 +59,28 @@ final class WatchSync: NSObject {
             }
         }
         importedIDs.insert(key)
+        MirroredWorkout.shared.watchRunImported(startDate: transfer.startDate)
     }
 }
 
 extension WatchSync: WCSessionDelegate {
     nonisolated func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
-        guard activationState == .activated else { return }
-        Task { @MainActor in self.pushSettings() }
+        Task { @MainActor in
+            MirroredWorkout.shared.updateWatchAvailability()
+            if activationState == .activated { self.pushSettings() }
+        }
     }
 
-    nonisolated func sessionDidBecomeInactive(_ session: WCSession) {}
+    nonisolated func sessionDidBecomeInactive(_ session: WCSession) {
+        Task { @MainActor in MirroredWorkout.shared.updateWatchAvailability() }
+    }
 
     /// Pairing or the Watch app's install state changed: push settings to the (new) Watch app.
     nonisolated func sessionWatchStateDidChange(_ session: WCSession) {
-        Task { @MainActor in self.pushSettings() }
+        Task { @MainActor in
+            MirroredWorkout.shared.updateWatchAvailability()
+            self.pushSettings()
+        }
     }
 
     nonisolated func sessionDidDeactivate(_ session: WCSession) {

@@ -8,8 +8,17 @@ struct RunDetailView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @AppStorage(StrideSettings.unitSystem) private var unit: UnitSystem = .metric
+    @AppStorage(StrideSettings.maxHeartRate) private var maxHeartRate = HeartRateZone.defaultMaxHeartRate
+
     @State private var route: [RoutePoint] = []
     @State private var splits: [Split] = []
+    @State private var paceSeries: [SeriesPoint] = []
+    @State private var elevationSeries: [SeriesPoint] = []
+    @State private var heartRateSeries: [SeriesPoint] = []
+    /// Meters along the route under the finger, shared by all charts.
+    @State private var chartSelection: Double?
+    @State private var shareImage: Image?
+    @State private var editing = false
     @State private var confirmingDelete = false
 
     var body: some View {
@@ -30,6 +39,8 @@ struct RunDetailView: View {
 
                 RunReport(run: run, route: route, splits: splits, unit: unit)
 
+                charts
+
                 VStack(alignment: .leading, spacing: Space.x3) {
                     Text("How did it feel?").font(.headline).foregroundStyle(.ink)
                     FeelingPicker(selection: $run.feeling)
@@ -47,6 +58,16 @@ struct RunDetailView: View {
                         .padding(Space.x4)
                         .background(Color.surfaceRaised, in: RoundedRectangle(cornerRadius: Radius.md))
                 }
+
+                if let shoe = run.shoe {
+                    LabeledContent {
+                        Text(shoe.name).foregroundStyle(.ink)
+                    } label: {
+                        Label("Shoe", systemImage: "shoe.fill").foregroundStyle(.inkMuted)
+                    }
+                    .padding(Space.x4)
+                    .background(Color.surfaceRaised, in: RoundedRectangle(cornerRadius: Radius.md))
+                }
             }
             .padding(Space.x4)
         }
@@ -55,13 +76,24 @@ struct RunDetailView: View {
         .navigationTitle(run.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if let shareImage {
+                ToolbarItem(placement: .primaryAction) {
+                    ShareLink(item: shareImage, preview: SharePreview(run.title, image: shareImage)) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
+                }
+            }
             ToolbarItem(placement: .primaryAction) {
                 Menu {
+                    Button("Edit", systemImage: "pencil") { editing = true }
                     Button("Delete Run", systemImage: "trash", role: .destructive) { confirmingDelete = true }
                 } label: {
                     Label("More", systemImage: "ellipsis.circle")
                 }
             }
+        }
+        .sheet(isPresented: $editing, onDismiss: renderShareImage) {
+            EditRunView(run: run)
         }
         .confirmationDialog("Delete this run?", isPresented: $confirmingDelete, titleVisibility: .visible) {
             Button("Delete Run", role: .destructive) {
@@ -75,9 +107,74 @@ struct RunDetailView: View {
                 }
             }
         }
-        .task(id: unit) {
-            if route.isEmpty { route = run.route }
-            splits = unit == .metric ? run.splits : RouteAnalysis.splits(from: route, unit: unit)
+        .task(id: unit) { await load() }
+        .onChange(of: shareInputs) { renderShareImage() }
+    }
+
+    /// Everything the share card shows, so the image is redrawn whenever any of it changes.
+    private struct ShareInputs: Equatable {
+        let title: String
+        let date: Date
+        let distance: Double
+        let duration: TimeInterval
+        let elevationGain: Double
+    }
+
+    private var shareInputs: ShareInputs {
+        ShareInputs(title: run.title, date: run.startDate, distance: run.distance, duration: run.duration, elevationGain: run.elevationGain)
+    }
+
+    /// One distance axis for all charts, so a selection lines up across them.
+    private var xDomain: ClosedRange<Double> {
+        let end = [paceSeries.last, elevationSeries.last, heartRateSeries.last].compactMap { $0?.distance }.max() ?? 0
+        return 0...Swift.max(end / unit.metersPerUnit, 0.1)
+    }
+
+    @ViewBuilder private var charts: some View {
+        if paceSeries.count > 2 {
+            let selected = paceSeries.nearest(to: chartSelection)
+            ChartCard(title: "Pace", summary: selected.map { "\(atDistance($0)) · \(RunFormat.pace($0.value)) \(unit.paceSymbol)" }
+                      ?? "Avg \(RunFormat.pace(run.averagePace(in: unit))) \(unit.paceSymbol)") {
+                PaceChart(series: paceSeries, unit: unit, average: run.averagePace(in: unit), xDomain: xDomain, selection: $chartSelection)
+            }
         }
+        if elevationSeries.count > 2 {
+            let selected = elevationSeries.nearest(to: chartSelection)
+            ChartCard(title: "Elevation", summary: selected.map { "\(atDistance($0)) · \(Int(unit.elevation(fromMeters: $0.value))) \(unit.elevationSymbol)" }
+                      ?? "+\(Int(unit.elevation(fromMeters: run.elevationGain))) \(unit.elevationSymbol)") {
+                ElevationChart(series: elevationSeries, unit: unit, xDomain: xDomain, selection: $chartSelection)
+            }
+        }
+        if heartRateSeries.count > 2 {
+            let selected = heartRateSeries.nearest(to: chartSelection)
+            ChartCard(title: "Heart rate", summary: selected.map { "\(atDistance($0)) · \(Int($0.value)) bpm" }
+                      ?? run.averageHeartRate.map { "Avg \(Int($0)) bpm" } ?? "") {
+                HeartRateChart(series: heartRateSeries, unit: unit, maxHeartRate: maxHeartRate, xDomain: xDomain, selection: $chartSelection)
+            }
+        }
+    }
+
+    private func atDistance(_ point: SeriesPoint) -> String {
+        "\(RunFormat.distance(point.distance, unit: unit, fractionDigits: 1)) \(unit.distanceSymbol)"
+    }
+
+    /// Decoding and analysis run off the main actor, so opening a long run doesn't stall the push.
+    private func load() async {
+        let data = await RouteAnalysis.chartData(
+            routeData: route.isEmpty ? run.routeData : nil, decodedRoute: route,
+            distance: run.distance, duration: run.duration, source: run.source, unit: unit
+        )
+        guard !Task.isCancelled else { return }
+        route = data.route
+        splits = data.imperialSplits ?? run.splits
+        paceSeries = data.pace
+        elevationSeries = data.elevation
+        heartRateSeries = data.heartRate
+        renderShareImage()
+    }
+
+    private func renderShareImage() {
+        shareImage = ShareCardView(title: run.title, date: run.startDate, distance: run.distance, duration: run.duration,
+                                   elevationGain: run.elevationGain, coordinates: run.preview, unit: unit).image()
     }
 }
