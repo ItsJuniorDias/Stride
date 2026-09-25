@@ -69,7 +69,11 @@ final class WatchSync: NSObject {
         if existing == 0 {
             let run = Run(transfer: transfer)
             run.shoe = ShoeDefaults.shoe(in: context)
+            run.originDevice = CloudStore.deviceID
             context.insert(run)
+            // Heart rate stays on this iPhone (never in iCloud).
+            let vitals = RunVitals(transfer: transfer)
+            if !vitals.isEmpty { context.insert(vitals) }
             do {
                 try context.save()
             } catch {

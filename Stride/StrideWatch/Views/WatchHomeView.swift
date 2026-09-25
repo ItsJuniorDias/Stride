@@ -5,6 +5,8 @@ import StrideUI
 /// Start list: a free run first, then distance and time goals.
 struct WatchHomeView: View {
     @Environment(WorkoutManager.self) private var workout
+    /// The week and friends, from iPhone.
+    @State private var snapshot = WidgetStore.load()
 
     private let goals: [(title: String, systemImage: String, goal: WorkoutManager.Goal)] = [
         ("5 km", "ruler", .init(type: .distance, distance: 5_000, name: "5 km")),
@@ -33,6 +35,21 @@ struct WatchHomeView: View {
                     .padding(.vertical, Space.x2)
                 }
 
+                if let snapshot, let me = snapshot.leaderboard().first(where: \.isMe), snapshot.leaderboard().count > 1 {
+                    NavigationLink {
+                        WatchFriendsView(snapshot: snapshot)
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text("Friends")
+                                Text("You're #\(me.rank) this week").font(.caption).foregroundStyle(.inkMuted)
+                            }
+                        } icon: {
+                            Image(systemName: "person.2.fill").foregroundStyle(.lane)
+                        }
+                    }
+                }
+
                 Section("Goals") {
                     ForEach(goals, id: \.title) { item in
                         Button {
@@ -57,5 +74,10 @@ struct WatchHomeView: View {
             .navigationTitle("Stride")
         }
         .task { await workout.requestAuthorization() }
+        // New data from iPhone lands while the app is open, too.
+        .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
+            let latest = WidgetStore.load()
+            if latest != snapshot { snapshot = latest }
+        }
     }
 }

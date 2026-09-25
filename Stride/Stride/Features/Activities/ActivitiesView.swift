@@ -44,7 +44,7 @@ struct ActivitiesView: View {
                                 .onDelete { offsets in
                                     for index in offsets {
                                         HealthSync.shared.delete(workoutID: group.runs[index].healthWorkoutID)
-                                        context.delete(group.runs[index])
+                                        Vitals.delete(group.runs[index], in: context)
                                     }
                                     try? context.save()
                                 }

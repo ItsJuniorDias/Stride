@@ -20,6 +20,7 @@ struct ProgressDashboardView: View {
                 VStack(alignment: .leading, spacing: Space.x5) {
                     PeriodStatsCard(samples: samples, firstRun: runs.last?.startDate, now: now)
                     StreaksCard(samples: samples, now: now)
+                    FriendsSection(samples: samples, now: now)
                     RecordsSection(records: records, runs: runs)
                     ChallengesSection(samples: samples, now: now)
                     ShoesSection()

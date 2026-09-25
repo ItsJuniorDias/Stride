@@ -15,6 +15,14 @@ enum WidgetSync {
         let goal = defaults.object(forKey: StrideSettings.weeklyGoal) as? Double ?? 20
         var snapshot = WidgetSnapshot(runs: runs.map(\.sample), titles: runs.map(\.title), weeklyGoal: goal, unit: unit)
         snapshot.importedWatchRuns = WatchSync.shared.recentImports
+        let friends = FriendsService.shared
+        if !friends.friendCodes.isEmpty {
+            snapshot.myCode = friends.myCode
+            var me = friends.myCard(from: runs.map(\.sample))
+            // Without a timestamp, so an unchanged week compares equal and doesn't reload widgets.
+            me.updatedAt = nil
+            snapshot.friendCards = [me] + friends.friendCards
+        }
         // Nothing changed but the time: skip the reload, widgets have a daily budget.
         if var previous = lastWritten {
             previous.updatedAt = snapshot.updatedAt

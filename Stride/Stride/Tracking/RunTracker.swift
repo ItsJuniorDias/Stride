@@ -264,6 +264,7 @@ final class RunTracker {
         run.calories = calories
         run.workoutName = configuration.workoutName ?? configuration.workout?.name
         run.planSessionID = configuration.planSessionID
+        run.originDevice = CloudStore.deviceID
         run.updateBestEfforts(route: route)
         // A plan session counts as done when every step of it was completed.
         if let sessionID = configuration.planSessionID, coach.workoutComplete, !PlanProgress.completed.contains(sessionID) {

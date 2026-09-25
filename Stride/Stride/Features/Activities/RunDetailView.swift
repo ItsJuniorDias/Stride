@@ -18,6 +18,8 @@ struct RunDetailView: View {
     /// Meters along the route under the finger, shared by all charts.
     @State private var chartSelection: Double?
     @State private var shareImage: Image?
+    /// Heart rate, kept apart from the run on this device.
+    @State private var vitals: RunVitals?
     @State private var editing = false
     @State private var confirmingDelete = false
 
@@ -40,7 +42,7 @@ struct RunDetailView: View {
                     RecordBadges(runID: run.id)
                 }
 
-                RunReport(run: run, route: route, splits: splits, unit: unit)
+                RunReport(run: run, route: route, splits: splits, unit: unit, vitals: vitals)
 
                 charts
 
@@ -120,7 +122,7 @@ struct RunDetailView: View {
                 Task {
                     try? await Task.sleep(for: .milliseconds(400))
                     HealthSync.shared.delete(workoutID: run.healthWorkoutID)
-                    context.delete(run)
+                    Vitals.delete(run, in: context)
                     try? context.save()
                 }
             }
@@ -166,7 +168,7 @@ struct RunDetailView: View {
         if heartRateSeries.count > 2 {
             let selected = heartRateSeries.nearest(to: chartSelection)
             ChartCard(title: "Heart rate", summary: selected.map { "\(atDistance($0)) · \(Int($0.value)) bpm" }
-                      ?? run.averageHeartRate.map { "Avg \(Int($0)) bpm" } ?? "") {
+                      ?? vitals?.averageHeartRate.map { "Avg \(Int($0)) bpm" } ?? "") {
                 HeartRateChart(series: heartRateSeries, unit: unit, maxHeartRate: maxHeartRate, xDomain: xDomain, selection: $chartSelection)
             }
         }
@@ -178,8 +180,9 @@ struct RunDetailView: View {
 
     /// Decoding and analysis run off the main actor, so opening a long run doesn't stall the push.
     private func load() async {
+        if vitals == nil { vitals = Vitals.of(run.id, in: context) }
         let data = await RouteAnalysis.chartData(
-            routeData: route.isEmpty ? run.routeData : nil, decodedRoute: route,
+            routeData: route.isEmpty ? run.routeData : nil, decodedRoute: route, heartRates: vitals?.heartRates ?? [],
             distance: run.distance, duration: run.duration, source: run.source, unit: unit
         )
         guard !Task.isCancelled else { return }

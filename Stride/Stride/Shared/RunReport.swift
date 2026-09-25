@@ -8,6 +8,8 @@ struct RunReport: View {
     let route: [RoutePoint]
     let splits: [Split]
     let unit: UnitSystem
+    /// Heart rate, when this device has it.
+    var vitals: RunVitals?
 
     private struct Tile: Identifiable {
         let label: String
@@ -26,7 +28,7 @@ struct RunReport: View {
         if let fastest = Split.fastest(in: splits, unit: unit) {
             tiles.append(Tile(label: "Fastest \(unit.distanceSymbol)", value: RunFormat.pace(fastest.pace(in: unit)), unit: unit.paceSymbol))
         }
-        if let heartRate = run.averageHeartRate {
+        if let heartRate = vitals?.averageHeartRate {
             tiles.append(Tile(label: "Avg heart rate", value: "\(Int(heartRate))", unit: "bpm"))
         }
         return tiles
@@ -66,7 +68,7 @@ struct RunReport: View {
                 }
             }
 
-            let zones = run.zoneSeconds
+            let zones = vitals?.zoneSeconds ?? [:]
             if !zones.isEmpty {
                 VStack(alignment: .leading, spacing: Space.x3) {
                     Text("Heart rate zones").font(.headline).foregroundStyle(.ink)

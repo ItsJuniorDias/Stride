@@ -4,7 +4,7 @@ import StrideUI
 
 /// Screens reachable from Progress and Profile.
 enum ProgressRoute: Hashable {
-    case records, challenges, shoes
+    case records, challenges, shoes, friends
 }
 
 extension View {
@@ -15,6 +15,7 @@ extension View {
             case .records: RecordsView()
             case .challenges: ChallengesView()
             case .shoes: ShoesView()
+            case .friends: FriendsView()
             }
         }
         .navigationDestination(for: Shoe.self) { ShoeDetailView(shoe: $0) }

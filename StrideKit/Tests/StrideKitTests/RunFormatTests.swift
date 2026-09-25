@@ -132,7 +132,7 @@ import SwiftData
 @Suite struct WatchImportTests {
     @MainActor
     @Test func runFromWatchTransfer() throws {
-        let container = try ModelContainer(for: Run.self, Shoe.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try ModelContainer(for: Run.self, Shoe.self, RunVitals.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
         let start = Date(timeIntervalSince1970: 0)
         let route = (0...500).map { i in
             RoutePoint(latitude: Double(i) * 4 / 111_195, longitude: 0, altitude: 100,
@@ -142,10 +142,17 @@ import SwiftData
                                    averageHeartRate: 150, zoneSeconds: [3: 500], route: route, workoutName: "5 km")
         let run = Run(transfer: transfer)
         container.mainContext.insert(run)
+        let vitals = RunVitals(transfer: transfer)
 
         #expect(run.id == transfer.id)
         #expect(run.source == .watch)
-        #expect(run.zoneSeconds[.aerobic] == 500)
+        // Heart rate stays out of the synced run (no health data in iCloud).
+        #expect(run.averageHeartRate == nil)
+        #expect(run.route.allSatisfy { $0.heartRate == nil })
+        #expect(vitals.runID == run.id)
+        #expect(vitals.zoneSeconds[.aerobic] == 500)
+        #expect(vitals.averageHeartRate == 150)
+        #expect(RunVitals.merge(run.route, heartRates: vitals.heartRates).allSatisfy { $0.heartRate == 150 })
         #expect(run.splits.count == 2)
         #expect(run.preview.count > 1)
         #expect(run.title == "5 km")

@@ -43,6 +43,7 @@ struct ProfileView: View {
                 }
 
                 Section("Training") {
+                    NavigationLink("Friends", value: ProgressRoute.friends)
                     NavigationLink("Training plans", value: PlanRoute.list)
                     NavigationLink("Challenges", value: ProgressRoute.challenges)
                     NavigationLink("Shoes", value: ProgressRoute.shoes)
@@ -100,6 +101,16 @@ struct ProfileView: View {
                     }
                 }
 
+                Section {
+                    LabeledContent {
+                        Text(iCloudStatus.value).foregroundStyle(.inkMuted)
+                    } label: {
+                        Label("iCloud sync", systemImage: iCloudStatus.on ? "icloud.fill" : "icloud.slash")
+                    }
+                } footer: {
+                    Text(iCloudStatus.footer)
+                }
+
                 Section("Running") {
                     Picker("Units", selection: $unit) {
                         Text("Kilometers").tag(UnitSystem.metric)
@@ -137,13 +148,17 @@ struct ProfileView: View {
             .planDestinations()
             .progressDestinations()
             .onAppear { healthDenied = healthSave && HealthSync.shared.wasDenied }
+            .task { await FriendsService.shared.checkAccount() }
             .onChange(of: unit) { WatchSync.shared.pushSettings() }
             .onChange(of: maxHeartRate) { WatchSync.shared.pushSettings() }
             .confirmationDialog("Delete all runs, shoes and challenges?", isPresented: $confirmingDeleteAll, titleVisibility: .visible) {
                 Button("Delete All", role: .destructive) {
-                    try? context.delete(model: Run.self)
-                    try? context.delete(model: Shoe.self)
-                    try? context.delete(model: Challenge.self)
+                    // One by one: batch deletes don't reach iCloud.
+                    (try? context.fetch(FetchDescriptor<Run>()))?.forEach(context.delete)
+                    (try? context.fetch(FetchDescriptor<RunVitals>()))?.forEach(context.delete)
+                    (try? context.fetch(FetchDescriptor<Shoe>()))?.forEach(context.delete)
+                    (try? context.fetch(FetchDescriptor<Challenge>()))?.forEach(context.delete)
+                    try? context.save()
                     ShoeDefaults.set(nil)
                 }
             }
@@ -152,6 +167,22 @@ struct ProfileView: View {
 }
 
 extension ProfileView {
+    /// What the iCloud row says: syncing needs both the capability and a signed-in account.
+    private var iCloudStatus: (on: Bool, value: String, footer: String) {
+        let account = FriendsService.shared.account
+        guard CloudStore.syncsWithICloud else {
+            return (false, "Off", "Runs are kept on this iPhone only.")
+        }
+        switch account {
+        case .noAccount:
+            return (false, "Signed out", "Sign in to iCloud in Settings to keep your runs on all your iPhones.")
+        case .restricted, .unavailable:
+            return (false, "Unavailable", "iCloud isn't available right now. Runs sync once it is.")
+        case .available, .unknown:
+            return (true, "On", "Runs, shoes, challenges and settings stay in step on every iPhone signed in to your iCloud account. Heart rate stays on this iPhone.")
+        }
+    }
+
     private func setHealthSave(_ on: Bool) {
         healthSave = on
         healthMessage = nil

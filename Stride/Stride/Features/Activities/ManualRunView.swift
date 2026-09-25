@@ -83,6 +83,7 @@ struct ManualRunView: View {
         run.shoe = shoe
         run.notes = notes
         run.updateBestEfforts(route: [])
+        run.originDevice = CloudStore.deviceID
         context.insert(run)
         try? context.save()
         dismiss()

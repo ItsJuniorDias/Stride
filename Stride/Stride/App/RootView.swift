@@ -58,7 +58,17 @@ struct RootView: View {
         .task { tracker.restoreIfNeeded() }
         .task { await RunMaintenance.backfillBestEfforts(in: context) }
         .background { IntegrationSync() }
+        // Waits until no run is on screen: a sheet can't show over the run's full-screen cover.
+        .sheet(item: Binding(get: { tracker.isPresented || mirrored.isPresented ? nil : FriendsService.shared.pendingInvite },
+                             set: { FriendsService.shared.pendingInvite = $0 })) { invite in
+            AddFriendView(initialCode: invite.code)
+        }
         .onOpenURL { url in
+            if let code = StrideLink.friendCode(in: url) {
+                selectedTab = .progress
+                FriendsService.shared.pendingInvite = .init(code: code)
+                return
+            }
             switch StrideLink(url: url) {
             case .run: selectedTab = .run
             case .progress: selectedTab = .progress
@@ -84,7 +94,7 @@ struct RootView: View {
         if tracker.isDismissing { tracker.reset() }
         guard let run = tracker.takeRunPendingDeletion() else { return }
         HealthSync.shared.delete(workoutID: run.healthWorkoutID)
-        context.delete(run)
+        Vitals.delete(run, in: context)
         try? context.save()
     }
 
@@ -93,10 +103,14 @@ struct RootView: View {
     /// `-exportShareCard` to write the newest GPS run's share card to Documents/share-card.png.
     private func seedSampleDataIfRequested() async {
         let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("-demoFriends") { FriendsService.shared.loadDemo() }
+        if arguments.contains("-initCloudKitSchema") { await FriendsService.shared.initializeSchema() }
         if arguments.contains("-seedSampleData") {
-            try? context.delete(model: Run.self)
-            try? context.delete(model: Shoe.self)
-            try? context.delete(model: Challenge.self)
+            // One by one: batch deletes don't reach iCloud.
+            (try? context.fetch(FetchDescriptor<Run>()))?.forEach(context.delete)
+            (try? context.fetch(FetchDescriptor<RunVitals>()))?.forEach(context.delete)
+            (try? context.fetch(FetchDescriptor<Shoe>()))?.forEach(context.delete)
+            (try? context.fetch(FetchDescriptor<Challenge>()))?.forEach(context.delete)
             await SampleData.insert(into: context)
             ShoeDefaults.set(try? context.fetch(FetchDescriptor<Shoe>(predicate: #Predicate { $0.name == "Daily Trainer" })).first)
         }
@@ -139,13 +153,22 @@ private struct IntegrationSync: View {
             .onChange(of: weeklyGoal) { WidgetSync.update(from: runs) }
             // A new day or week since the widgets were last drawn.
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active { sync() }
+                guard phase == .active else { return }
+                sync()
+                FriendsService.shared.retryPendingDeletion()
+                Task {
+                    await FriendsService.shared.checkAccount()
+                    await FriendsService.shared.refresh()
+                }
             }
+            // Friends' weeks go to the widgets and Apple Watch too.
+            .onChange(of: FriendsService.shared.cards) { WidgetSync.update(from: runs) }
     }
 
     private func sync() {
         WidgetSync.update(from: runs)
         Task { await HealthSync.shared.exportPending(in: context) }
+        FriendsService.shared.publish(from: runs.map(\.sample))
     }
 }
 

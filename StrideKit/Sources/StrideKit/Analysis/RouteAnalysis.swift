@@ -181,11 +181,14 @@ public enum RouteAnalysis {
 
     /// Decodes the route (unless it's already decoded) and builds the chart series and mile splits.
     @concurrent
-    public static func chartData(routeData: Data?, decodedRoute: [RoutePoint], distance: Double, duration: TimeInterval,
+    public static func chartData(routeData: Data?, decodedRoute: [RoutePoint], heartRates: [Double?] = [],
+                                 distance: Double, duration: TimeInterval,
                                  source: RunSource, unit: UnitSystem) async -> ChartData {
-        let route = decodedRoute.isEmpty
+        let decoded = decodedRoute.isEmpty
             ? (routeData.flatMap { try? JSONDecoder().decode([RoutePoint].self, from: $0) } ?? [])
             : decodedRoute
+        // Heart rate is kept apart from the synced route (see RunVitals).
+        let route = heartRates.isEmpty ? decoded : RunVitals.merge(decoded, heartRates: heartRates)
         let chartScale = Run.chartScale(distance: distance, duration: duration, route: route, source: source)
         let splitScale = Run.splitScale(distance: distance, route: route, source: source)
         return ChartData(

@@ -13,6 +13,8 @@ public final class Run {
     public var calories: Double = 0
     public var elevationGain: Double = 0
     public var elevationLoss: Double = 0
+    /// Legacy: heart rate now lives in ``RunVitals`` on this device only (never in iCloud). Always
+    /// nil for runs saved since; older values are moved out at launch.
     public var averageHeartRate: Double?
     public var typeRaw: String = RunType.free.rawValue
     /// Name of the workout or plan session, if the run followed one.
@@ -26,7 +28,7 @@ public final class Run {
     public var splitsData: Data?
     /// A downsampled route for list thumbnails, so lists never decode the full route.
     public var previewData: Data?
-    /// Seconds per heart-rate zone, keyed by zone number, when heart rate was recorded.
+    /// Legacy, moved to ``RunVitals`` like ``averageHeartRate``.
     public var zoneData: Data?
     /// The training-plan session this run completed, if any.
     public var planSessionID: String?
@@ -39,6 +41,9 @@ public final class Run {
     public var effortsVersion: Int = 0
     /// The Apple Health workout saved for this run from iPhone, if any. Apple Watch saves its own runs.
     public var healthWorkoutID: UUID?
+    /// The install that recorded or added this run (see ``StrideSettings/deviceID``). With iCloud sync a
+    /// run shows up on every iPhone, but only the one that recorded it saves it to Apple Health.
+    public var originDevice: String?
 
     public init(
         startDate: Date,
@@ -183,7 +188,8 @@ public final class Run {
         }
     }
 
-    /// Fills distance, duration, elevation, heart rate, splits and preview from a recorded route.
+    /// Fills distance, duration, elevation, splits and preview from a recorded route (iPhone routes have
+    /// no heart rate).
     public func apply(route points: [RoutePoint], weightKg: Double) {
         route = points
         distance = RouteAnalysis.distance(of: points)
@@ -191,11 +197,6 @@ public final class Run {
         let elevation = RouteAnalysis.elevation(of: points)
         elevationGain = elevation.gain
         elevationLoss = elevation.loss
-        let rates = points.compactMap(\.heartRate)
-        averageHeartRate = rates.isEmpty ? nil : rates.reduce(0, +) / Double(rates.count)
-        if !rates.isEmpty {
-            zoneSeconds = RouteAnalysis.zoneSeconds(of: points, maxHeartRate: HeartRateZone.defaultMaxHeartRate)
-        }
         calories = Self.estimatedCalories(distance: distance, weightKg: weightKg)
         splits = RouteAnalysis.splits(from: points, unit: .metric)
     }
@@ -207,10 +208,9 @@ public final class Run {
         id = transfer.id
         source = .watch
         workoutName = transfer.workoutName
-        averageHeartRate = transfer.averageHeartRate
-        zoneSeconds = transfer.zones
+        // Heart rate goes to RunVitals(transfer:), kept on this device only.
         if transfer.route.count > 1 {
-            route = transfer.route
+            route = RunVitals.split(transfer.route).route
             let scale = Self.splitScale(distance: transfer.distance, route: transfer.route, source: .watch)
             splits = RouteAnalysis.splits(from: transfer.route, unit: .metric, scale: scale)
             let elevation = RouteAnalysis.elevation(of: transfer.route)

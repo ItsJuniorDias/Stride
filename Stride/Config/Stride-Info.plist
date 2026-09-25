@@ -33,6 +33,7 @@
 		<string>audio</string>
 		<string>location</string>
 		<string>workout-processing</string>
+		<string>remote-notification</string>
 	</array>
 </dict>
 </plist>

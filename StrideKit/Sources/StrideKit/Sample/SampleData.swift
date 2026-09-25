@@ -38,6 +38,7 @@ public enum SampleData {
         let averageHeartRate: Double?
         let zoneSeconds: [HeartRateZone: TimeInterval]
         let bestEfforts: [EffortDistance: TimeInterval]
+        let heartRates: [Double?]
     }
 
     private static func prepare(now: Date) -> [Prepared] {
@@ -55,10 +56,11 @@ public enum SampleData {
             let encoder = JSONEncoder()
             let distance = RouteAnalysis.distance(of: points)
             let duration = RouteAnalysis.movingTime(of: points)
+            let split = RunVitals.split(points)
             prepared.append(Prepared(
                 plan: plan,
                 start: start,
-                routeData: try? encoder.encode(points),
+                routeData: try? encoder.encode(split.route),
                 previewData: try? encoder.encode(RouteAnalysis.preview(of: points)),
                 splitsData: try? encoder.encode(RouteAnalysis.splits(from: points, unit: .metric)),
                 distance: distance,
@@ -67,7 +69,8 @@ public enum SampleData {
                 elevationLoss: elevation.loss,
                 averageHeartRate: rates.isEmpty ? nil : rates.reduce(0, +) / Double(rates.count),
                 zoneSeconds: RouteAnalysis.zoneSeconds(of: points, maxHeartRate: HeartRateZone.defaultMaxHeartRate),
-                bestEfforts: BestEfforts.compute(route: points, distance: distance, duration: duration)
+                bestEfforts: BestEfforts.compute(route: points, distance: distance, duration: duration),
+                heartRates: split.heartRates
             ))
         }
         return prepared
@@ -96,8 +99,10 @@ public enum SampleData {
             run.splitsData = item.splitsData
             run.elevationGain = item.elevationGain
             run.elevationLoss = item.elevationLoss
-            run.averageHeartRate = item.averageHeartRate
-            run.zoneSeconds = item.zoneSeconds
+            let vitals = RunVitals(runID: run.id, averageHeartRate: item.averageHeartRate)
+            vitals.zoneSeconds = item.zoneSeconds
+            vitals.heartRates = item.heartRates
+            context.insert(vitals)
             run.bestEfforts = item.bestEfforts
             run.effortsVersion = BestEfforts.version
             if index.isMultiple(of: 3) { run.source = .watch }

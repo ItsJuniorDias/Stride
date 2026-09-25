@@ -15,7 +15,7 @@ Design system: https://claude.ai/artifact/AXgXamUybY5LSk9rdefbJa
 | 4 | Coach | Voice feedback, distance/time goals, target pace alerts, intervals, training plans (5K, 10K, half) | Done: voice coach over music, split/goal announcements, target pace alerts, interval presets with live step card, 5K/10K/half plans with progress, restorable coach state |
 | 5 | Progress | Weekly/monthly/yearly stats, personal records, streaks, challenges, shoe tracking | Done: week/month/year/all-time stats with charts and fair comparisons, yearly goal, weekly and daily streaks with heatmap, best efforts (1K to marathon) and records with summary, voice and run-detail badges, challenges (suggested and custom), shoe tracking with default shoe and wear alerts |
 | 6 | Native integrations | Apple Health, Live Activity / Dynamic Island, widgets, Siri shortcuts | Done: iPhone and manual runs saved to Apple Health with route and pauses (weight and age read back), Live Activity on the Lock Screen, Dynamic Island and Watch Smart Stack with pause/resume, Home and Lock Screen widgets, Control Center control, Watch complications, Siri shortcuts (start, pause, resume, finish, this week, last run) |
-| 7 | Social & cloud | CloudKit sync, friends, leaderboards | Not started |
+| 7 | Social & cloud | CloudKit sync, friends, leaderboards | Done: runs, shoes and challenges synced with iCloud (private CloudKit), settings through iCloud key-value, friends by code over CloudKit's public database (opt-in sharing), weekly and monthly leaderboards with cheers on iPhone, a Friends widget and Apple Watch |
 
 Each phase ends compiling and tested in the Simulator with a simulated route.
 
@@ -24,3 +24,10 @@ Each phase ends compiling and tested in the Simulator with a simulated route.
 - `StrideKit` (Swift package, shared iOS + watchOS): models, formatting, split/record math, workout definitions, design tokens.
 - iOS: SwiftData, CoreLocation (`CLLocationUpdate.liveUpdates(.fitness)`, `CLBackgroundActivitySession`), MapKit, Swift Charts, AVSpeechSynthesizer, HealthKit.
 - watchOS: HKWorkoutSession + HKLiveWorkoutBuilder, WatchConnectivity / workout mirroring.
+
+## Before release
+
+- **CloudKit schema:** run a Debug build once on an iPhone signed in to iCloud with the launch argument `-initCloudKitSchema` (Edit Scheme › Run › Arguments). It creates every record type and field in the Development environment. Then use **Deploy Schema Changes** in the [CloudKit Console](https://icloud.developer.apple.com) for `iCloud.alexandrejunior.Stride`. Repeat after any model change.
+- **Capabilities:** in Xcode › Signing & Capabilities, check that the app has iCloud (CloudKit, container `iCloud.alexandrejunior.Stride`, key-value storage), Push Notifications, App Groups (`group.alexandrejunior.Stride`) and HealthKit; the Watch app and both widget extensions need the App Group.
+- **Support email:** set `AppInfo.supportEmail` (Stride/Stride/App/AppInfo.swift). "Report Name" in Friends sends reports there (App Review 1.2).
+- **App Store Connect:** privacy policy URL; the privacy nutrition label must match `PrivacyInfo.xcprivacy` (name, user ID and fitness data, only when sharing with friends is on).

@@ -30,6 +30,19 @@ public enum StrideSettings {
     public static let healthSave = "healthSave"
     /// Runs from this moment on are saved to Health (a Date); earlier ones only when asked.
     public static let healthSaveSince = "healthSaveSince"
+    /// Share this week's and month's running with friends (public CloudKit card).
+    public static let shareWithFriends = "shareWithFriends"
+    /// This runner's friend code.
+    public static let friendCode = "friendCode"
+    /// Friends' codes, in the order they were added.
+    public static let friendCodes = "friendCodes"
+    /// Codes this runner blocked: removed and can't be added again.
+    public static let blockedCodes = "blockedCodes"
+    /// Friends cheered this week, and the ISO week it's for.
+    public static let cheered = "cheered"
+    public static let cheerWeekKey = "cheerWeekKey"
+    /// A random id for this install, so runs remember which device recorded them.
+    public static let deviceID = "deviceID"
 
     /// Reads a Bool setting that defaults to true when never set.
     public static func bool(_ key: String, default value: Bool = true) -> Bool {

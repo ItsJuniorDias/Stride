@@ -5,6 +5,7 @@ import SwiftUI
 struct StrideWidgetsBundle: WidgetBundle {
     var body: some Widget {
         WeeklyWidget()
+        FriendsWidget()
         QuickStartWidget()
         StartRunControl()
         RunLiveActivityWidget()

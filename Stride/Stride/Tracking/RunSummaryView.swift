@@ -37,7 +37,7 @@ struct RunSummaryView: View {
                     RecordsEarnedCard(achievements: achievements, unit: unit)
                 }
 
-                RunReport(run: run, route: route, splits: splits, unit: unit)
+                RunReport(run: run, route: route, splits: splits, unit: unit, vitals: Vitals.of(run.id, in: context))
 
                 if let shoe = run.shoe, shoe.isWornOut, !shoe.isRetired {
                     ShoeWearNotice(shoe: shoe, unit: unit)

@@ -7,6 +7,17 @@ public struct StrideButtonStyle: ButtonStyle {
     let kind: Kind
 
     public func makeBody(configuration: Configuration) -> some View {
+        StrideButtonBody(configuration: configuration, kind: kind)
+    }
+}
+
+/// The button's look, in a view so it can read whether the button is enabled.
+private struct StrideButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+    let kind: StrideButtonStyle.Kind
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
         configuration.label
             .font(.headline)
             .frame(maxWidth: .infinity, minHeight: Dimension.control)
@@ -20,7 +31,7 @@ public struct StrideButtonStyle: ButtonStyle {
                 }
             }
             .contentShape(Capsule())
-            .opacity(configuration.isPressed ? 0.85 : 1)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.85 : 1) : 0.4)
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
             .animation(.snappy(duration: 0.15), value: configuration.isPressed)
     }

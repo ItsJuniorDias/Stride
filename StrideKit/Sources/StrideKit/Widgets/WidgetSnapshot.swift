@@ -32,6 +32,17 @@ public struct WidgetSnapshot: Codable, Hashable, Sendable {
     /// Start dates of Apple Watch runs iPhone has imported recently, deleted or not, so the Watch
     /// knows which of its own runs it no longer needs to count by itself.
     public var importedWatchRuns: [Date]?
+    /// The runner's own card and their friends', for the friends leaderboard; nil without friends.
+    public var friendCards: [RunnerCard]?
+    /// The runner's own friend code, to pick their card out of ``friendCards``.
+    public var myCode: String?
+
+    /// This week's leaderboard, as of `date`.
+    public func leaderboard(at date: Date = .now) -> [LeaderboardRow] {
+        guard let cards = friendCards, !cards.isEmpty else { return [] }
+        let me = cards.first { $0.code == myCode }
+        return Leaderboard.rows(me: me, friends: cards.filter { $0.code != myCode }, period: .week, now: date)
+    }
 
     public init(runs: [RunSummary], activeWeeks: [Date], weeklyGoal: Double, unit: UnitSystem, updatedAt: Date = .now) {
         self.runs = runs
@@ -123,6 +134,7 @@ public enum WidgetStore {
     /// Widget kinds, so the app can ask for a reload.
     public static let weeklyKind = "StrideWeekly"
     public static let quickStartKind = "StrideQuickStart"
+    public static let friendsKind = "StrideFriends"
     /// The application-context key the snapshot travels to Apple Watch under.
     public static let contextKey = "widgetSnapshot"
 

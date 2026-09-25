@@ -68,8 +68,14 @@ final class HealthSync {
         let since = includingEarlier ? .distantPast
             : (UserDefaults.standard.object(forKey: StrideSettings.healthSaveSince) as? Date ?? .distantPast)
         let watch = RunSource.watch.rawValue
+        // With iCloud sync every iPhone has every run; only the one that recorded a run saves it
+        // automatically.
+        let device: String? = CloudStore.deviceID
+        // "Save earlier runs too" takes every run without a workout, whichever device recorded it;
+        // the run-id lookup in write() keeps a run another device already saved from doubling.
         let descriptor = FetchDescriptor<Run>(predicate: #Predicate {
-            $0.healthWorkoutID == nil && $0.sourceRaw != watch && $0.startDate >= since
+            $0.healthWorkoutID == nil && $0.sourceRaw != watch
+                && (includingEarlier || ($0.startDate >= since && $0.originDevice == device))
         })
         guard let runs = try? context.fetch(descriptor) else { return 0 }
         var saved = 0
