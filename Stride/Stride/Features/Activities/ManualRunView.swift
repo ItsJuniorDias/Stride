@@ -11,7 +11,8 @@ struct ManualRunView: View {
     @AppStorage(StrideSettings.unitSystem) private var unit: UnitSystem = .metric
     @AppStorage(StrideSettings.weightKg) private var weightKg = 70.0
 
-    @State private var date = Date.now
+    /// Started half an hour ago, so a run logged right after it ends doesn't end in the future.
+    @State private var date = Date.now.addingTimeInterval(-1_800)
     @State private var meters: Double = 5_000
     @State private var seconds: TimeInterval = 1_800
     @State private var name = ""

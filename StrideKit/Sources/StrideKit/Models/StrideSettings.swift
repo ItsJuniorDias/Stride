@@ -26,6 +26,10 @@ public enum StrideSettings {
     public static let defaultShoeID = "defaultShoeID"
     /// The Progress tab's period: week, month, year or all.
     public static let statsPeriod = "statsPeriod"
+    /// Save runs recorded on iPhone and added by hand to Apple Health.
+    public static let healthSave = "healthSave"
+    /// Runs from this moment on are saved to Health (a Date); earlier ones only when asked.
+    public static let healthSaveSince = "healthSaveSince"
 
     /// Reads a Bool setting that defaults to true when never set.
     public static func bool(_ key: String, default value: Bool = true) -> Bool {

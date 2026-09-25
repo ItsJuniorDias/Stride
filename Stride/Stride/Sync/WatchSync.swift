@@ -17,20 +17,36 @@ final class WatchSync: NSObject {
         WCSession.default.activate()
     }
 
-    /// Sends the settings the Watch needs. The latest context replaces any earlier one.
-    func pushSettings() {
+    /// Sends the settings the Watch needs. The latest context replaces any earlier one. With
+    /// `complication`, the week's snapshot also goes as a complication transfer, which wakes the
+    /// Watch app to redraw a complication on the face (about 50 a day).
+    func pushSettings(complication: Bool = false) {
         guard WCSession.isSupported(), WCSession.default.activationState == .activated,
               WCSession.default.isPaired, WCSession.default.isWatchAppInstalled
         else { return }
         let defaults = UserDefaults.standard
-        let context: [String: Any] = [
+        var context: [String: Any] = [
             StrideSettings.unitSystem: defaults.string(forKey: StrideSettings.unitSystem) ?? UnitSystem.metric.rawValue,
             StrideSettings.maxHeartRate: defaults.double(forKey: StrideSettings.maxHeartRate),
         ]
+        // The week so far, for the Watch's complications.
+        let snapshotData = WidgetStore.load().flatMap(WidgetStore.encoded)
+        if let snapshotData { context[WidgetStore.contextKey] = snapshotData }
         try? WCSession.default.updateApplicationContext(context)
+        if complication, let snapshotData, WCSession.default.isComplicationEnabled,
+           WCSession.default.remainingComplicationUserInfoTransfers > 0 {
+            WCSession.default.transferCurrentComplicationUserInfo([WidgetStore.contextKey: snapshotData])
+        }
     }
 
     private static let importedIDsKey = "importedWatchRunIDs"
+    private static let recentImportsKey = "importedWatchRunDates"
+
+    /// Start dates of the last Watch runs imported, sent back so the Watch stops counting them itself.
+    var recentImports: [Date] {
+        get { UserDefaults.standard.array(forKey: Self.recentImportsKey) as? [Date] ?? [] }
+        set { UserDefaults.standard.set(Array(newValue), forKey: Self.recentImportsKey) }
+    }
 
     /// Ids of every Watch run already imported. Kept even after the run is deleted, so a re-sent
     /// file can't bring back a run the runner removed.
@@ -61,6 +77,7 @@ final class WatchSync: NSObject {
             }
         }
         importedIDs.insert(key)
+        recentImports = (recentImports + [transfer.startDate]).suffix(30)
         MirroredWorkout.shared.watchRunImported(startDate: transfer.startDate)
     }
 }

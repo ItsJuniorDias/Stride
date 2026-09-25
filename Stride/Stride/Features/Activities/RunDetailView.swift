@@ -119,6 +119,7 @@ struct RunDetailView: View {
                 // Delete after the pop so this screen never renders a deleted model.
                 Task {
                     try? await Task.sleep(for: .milliseconds(400))
+                    HealthSync.shared.delete(workoutID: run.healthWorkoutID)
                     context.delete(run)
                     try? context.save()
                 }

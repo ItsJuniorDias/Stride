@@ -37,6 +37,8 @@ public final class Run {
     public var bestEffortsData: Data?
     /// The ``BestEfforts/version`` the stored efforts were computed with; 0 when never computed.
     public var effortsVersion: Int = 0
+    /// The Apple Health workout saved for this run from iPhone, if any. Apple Watch saves its own runs.
+    public var healthWorkoutID: UUID?
 
     public init(
         startDate: Date,

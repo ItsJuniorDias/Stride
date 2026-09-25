@@ -35,4 +35,16 @@ final class WatchAppDelegate: NSObject, WKApplicationDelegate {
     func handleActiveWorkoutRecovery() {
         Task { await WorkoutManager.shared.recoverActiveWorkout() }
     }
+
+    /// Woken in the background: data from iPhone (the week for the complications) is handled; any
+    /// other task is simply completed.
+    func handle(_ backgroundTasks: Set<WKRefreshBackgroundTask>) {
+        for task in backgroundTasks {
+            if let task = task as? WKWatchConnectivityRefreshBackgroundTask {
+                WatchConnector.shared.handle(task)
+            } else {
+                task.setTaskCompletedWithSnapshot(false)
+            }
+        }
+    }
 }

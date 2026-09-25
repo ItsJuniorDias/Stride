@@ -42,7 +42,10 @@ struct ActivitiesView: View {
                                     .listRowBackground(Color.surfaceRaised)
                                 }
                                 .onDelete { offsets in
-                                    for index in offsets { context.delete(group.runs[index]) }
+                                    for index in offsets {
+                                        HealthSync.shared.delete(workoutID: group.runs[index].healthWorkoutID)
+                                        context.delete(group.runs[index])
+                                    }
                                     try? context.save()
                                 }
                             } header: {

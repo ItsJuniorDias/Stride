@@ -38,6 +38,8 @@ final class RunTracker {
 
     /// Voice, workout steps and pace alerts for the current run.
     let coach = RunCoach()
+    /// The run on the Lock Screen and in the Dynamic Island.
+    @ObservationIgnored private let liveActivity = RunLiveActivity()
 
     enum GPSQuality {
         case searching, weak, strong
@@ -181,6 +183,10 @@ final class RunTracker {
 
         // Deadline-based, so a late wake-up can't shift when the run starts.
         let startAt = Date.now.addingTimeInterval(3)
+        // Only the foreground may start a Live Activity, and the phone may be locked before the
+        // countdown ends. The clock counts down to the start, then up.
+        liveActivity.sync(RunLiveActivity.State(status: .running, distance: 0, elapsed: 0, clockStart: startAt, pace: nil),
+                          title: liveActivityTitle, unit: unit)
         phase = .countdown(3)
         countdownTask = Task { [weak self] in
             for number in [3, 2, 1] {
@@ -204,6 +210,7 @@ final class RunTracker {
     func cancelCountdown() {
         guard case .countdown = phase else { return }
         countdownTask?.cancel()
+        liveActivity.end(nil, immediately: true)
         reset()
     }
 
@@ -219,6 +226,7 @@ final class RunTracker {
         phase = .paused
         coach.paused()
         checkpoint()
+        syncLiveActivity()
     }
 
     func resume() {
@@ -234,6 +242,7 @@ final class RunTracker {
         phase = .running
         coach.resumed()
         checkpoint()
+        syncLiveActivity()
     }
 
     /// Stops recording, saves the run and shows the summary.
@@ -275,6 +284,7 @@ final class RunTracker {
 
         finishedRun = run
         phase = .finished
+        liveActivity.end(liveActivityState, immediately: false)
     }
 
     /// Stops without saving. The state stays frozen until the cover is dismissed and calls ``reset()``.
@@ -282,6 +292,7 @@ final class RunTracker {
         stopRecording()
         clearCheckpoint()
         coach.silence()
+        liveActivity.end(nil, immediately: true)
         isDismissing = true
     }
 
@@ -293,6 +304,7 @@ final class RunTracker {
             PlanProgress.set(sessionID, done: false)
         }
         runPendingDeletion = run
+        liveActivity.end(nil, immediately: true)
         reset()
     }
 
@@ -389,6 +401,8 @@ final class RunTracker {
         if phase == .running, Date.now.timeIntervalSince(lastCheckpoint) >= 15 {
             checkpoint()
         }
+
+        syncLiveActivity()
     }
 
     private func openSegment(at date: Date) {
@@ -666,10 +680,14 @@ final class RunTracker {
 
     /// Restores a run interrupted by the app being terminated, paused, so the runner can resume or finish it.
     func restoreIfNeeded() {
-        guard phase == .idle,
-              let data = try? Data(contentsOf: Self.checkpointURL),
+        guard phase == .idle else { return }
+        guard let data = try? Data(contentsOf: Self.checkpointURL),
               let checkpoint = try? JSONDecoder().decode(Checkpoint.self, from: data)
-        else { return }
+        else {
+            // No run to pick up: a Live Activity left by a terminated app would show a run that's gone.
+            liveActivity.endAbandoned()
+            return
+        }
 
         configuration = checkpoint.configuration
         startDate = checkpoint.startDate
@@ -689,5 +707,94 @@ final class RunTracker {
         coach.restore(configuration, unit: unit, snapshot: checkpoint.coach,
                       elapsed: accumulated, stepClock: accumulated + autoPausedTime, distance: distance)
         startLocationUpdates()
+        syncLiveActivity()
+    }
+
+    // MARK: Live Activity
+
+    /// Brings the Live Activity up to date, e.g. when the app comes back to the foreground after a
+    /// request was refused in the background.
+    func refreshLiveActivity() {
+        syncLiveActivity()
+    }
+
+    private func syncLiveActivity() {
+        guard phase == .running || phase == .paused, !isDismissing, let state = liveActivityState else { return }
+        liveActivity.sync(state, title: liveActivityTitle, unit: unit)
+    }
+
+    private var liveActivityTitle: String {
+        configuration.workoutName ?? configuration.workout?.name ?? Run.timeOfDayTitle(for: startDate ?? .now)
+    }
+
+    private var liveActivityState: RunLiveActivity.State? {
+        let status: RunLiveActivity.State.Status
+        switch phase {
+        case .running: status = isAutoPaused ? .autoPaused : .running
+        case .paused: status = .paused
+        case .finished: status = .finished
+        case .idle, .countdown: return nil
+        }
+        let now = Date.now
+        var state = RunLiveActivity.State(
+            status: status,
+            distance: distance,
+            elapsed: elapsed,
+            clockStart: status == .running ? now.addingTimeInterval(-elapsed) : nil,
+            pace: status == .running ? (currentPace ?? averagePace) : averagePace
+        )
+        // Picked up after the app was closed: location can only restart from the foreground.
+        state.resumeInApp = status == .paused && wasRestored
+        if status != .finished, let cursor = coach.cursor, let step = cursor.currentStep {
+            let workout = cursor.workout
+            if let number = workout.runNumber(of: step), workout.runStepCount > 1 {
+                state.step = "\(step.kind.title) · \(number) of \(workout.runStepCount)"
+            } else {
+                state.step = step.kind.title
+            }
+            switch coach.stepRemaining {
+            // Timed steps keep counting through auto-pause, not through a manual pause.
+            case .time(let seconds): state.stepEnd = status == .paused ? nil : now.addingTimeInterval(seconds)
+            case .distance(let meters): state.stepRemaining = meters
+            case nil: break
+            }
+        }
+        return state
+    }
+}
+
+extension RunTracker: RunIntentHandling {
+    // An intent can launch the app before any screen appears: pick up an interrupted run first,
+    // so the intent acts on it rather than on an empty tracker.
+
+    func startRunFromIntent() -> StartRunOutcome {
+        restoreIfNeeded()
+        // A summary left open belongs to a run that's already saved: close it for the new one.
+        if phase == .finished, !isDismissing { reset() }
+        guard phase == .idle, !isPresented else { return .alreadyRunning }
+        let watch = MirroredWorkout.shared
+        if watch.phase == .ended, !watch.isDismissing { watch.dismiss() }
+        guard watch.phase != .running, watch.phase != .paused else { return .watchRunning }
+        start(Configuration(type: .free, shoeID: ShoeDefaults.id, autoPause: StrideSettings.bool(StrideSettings.autoPause)))
+        return .started
+    }
+
+    func pauseRunFromIntent() {
+        restoreIfNeeded()
+        pause()
+    }
+
+    func resumeRunFromIntent() -> ResumeRunOutcome {
+        restoreIfNeeded()
+        switch phase {
+        case .running: return .alreadyRunning
+        case .paused where isDismissing: return .noRun
+        // A restored run needs the app on screen to restart location updates.
+        case .paused where wasRestored && UIApplication.shared.applicationState != .active: return .needsApp
+        case .paused:
+            resume()
+            return phase == .running ? .resumed : .noRun
+        default: return .noRun
+        }
     }
 }

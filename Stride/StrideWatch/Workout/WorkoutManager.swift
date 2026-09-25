@@ -1,5 +1,6 @@
 import CoreLocation
 import HealthKit
+import WidgetKit
 import Observation
 import WatchKit
 import StrideKit
@@ -346,6 +347,12 @@ final class WorkoutManager: NSObject {
         // A workout that never collected anything isn't worth a Run on iPhone.
         if builder.startDate != nil, duration > 0 {
             WatchConnector.shared.send(transfer)
+            // Complications count the run now, before iPhone sends back its own copy of the week.
+            let unit = UnitSystem(rawValue: UserDefaults.standard.string(forKey: StrideSettings.unitSystem) ?? "") ?? .metric
+            let run = WidgetSnapshot.RunSummary(date: transfer.startDate, distance: transfer.distance, duration: transfer.duration,
+                                                title: transfer.workoutName ?? Run.timeOfDayTitle(for: transfer.startDate))
+            WidgetStore.addLocalRun(run, unit: unit)
+            WidgetCenter.shared.reloadAllTimelines()
         }
     }
 

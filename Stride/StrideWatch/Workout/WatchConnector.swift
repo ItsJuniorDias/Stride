@@ -1,5 +1,7 @@
 import Foundation
 import WatchConnectivity
+import WidgetKit
+import WatchKit
 import StrideKit
 
 /// Sends finished runs to the iPhone app. Every run is written to an outbox on disk first and only
@@ -59,9 +61,19 @@ extension WatchConnector: WCSessionDelegate {
     nonisolated func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
         let unit = applicationContext[StrideSettings.unitSystem] as? String
         let maxHeartRate = applicationContext[StrideSettings.maxHeartRate] as? Double
+        let snapshot = (applicationContext[WidgetStore.contextKey] as? Data).flatMap(WidgetStore.decode)
         Task { @MainActor in
             if let unit { UserDefaults.standard.set(unit, forKey: StrideSettings.unitSystem) }
             if let maxHeartRate, maxHeartRate > 0 { UserDefaults.standard.set(maxHeartRate, forKey: StrideSettings.maxHeartRate) }
+            if let snapshot { self.received(snapshot) }
+        }
+    }
+
+    /// A complication transfer from iPhone: the week's snapshot.
+    nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+        let snapshot = (userInfo[WidgetStore.contextKey] as? Data).flatMap(WidgetStore.decode)
+        Task { @MainActor in
+            if let snapshot { self.received(snapshot) }
         }
     }
 
@@ -89,5 +101,28 @@ extension WatchConnector: WCSessionDelegate {
     nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
         guard session.isReachable else { return }
         Task { @MainActor in self.retryPending() }
+    }
+}
+
+extension WatchConnector {
+    private func received(_ snapshot: WidgetSnapshot) {
+        WidgetStore.saveFromPhone(snapshot)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// watchOS woke the app in the background for data from iPhone. The task is completed once
+    /// everything pending has been delivered (or after 15 seconds), so the snapshot lands first.
+    func handle(_ task: WKWatchConnectivityRefreshBackgroundTask) {
+        activate()
+        Task { @MainActor in
+            let deadline = Date.now.addingTimeInterval(15)
+            // hasContentPending only means something once the session is active.
+            while WCSession.default.activationState != .activated || WCSession.default.hasContentPending, Date.now < deadline {
+                try? await Task.sleep(for: .milliseconds(300))
+            }
+            // Let the delegate's hop to the main actor save the snapshot first.
+            try? await Task.sleep(for: .milliseconds(300))
+            task.setTaskCompletedWithSnapshot(false)
+        }
     }
 }

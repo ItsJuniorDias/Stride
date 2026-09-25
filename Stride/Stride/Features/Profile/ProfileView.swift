@@ -18,6 +18,9 @@ struct ProfileView: View {
     @AppStorage(StrideSettings.voiceIncludePace) private var voiceIncludePace = true
     @AppStorage(StrideSettings.voiceIncludeTime) private var voiceIncludeTime = true
     @Environment(RunTracker.self) private var tracker
+    @AppStorage(StrideSettings.healthSave) private var healthSave = false
+    @State private var healthMessage: String?
+    @State private var healthDenied = false
 
     var body: some View {
         NavigationStack {
@@ -70,6 +73,33 @@ struct ProfileView: View {
                     Text("Spoken over your music: splits, workout steps, goal progress and target-pace alerts.")
                 }
 
+                if HealthSync.shared.isAvailable {
+                    Section {
+                        Toggle("Save runs to Apple Health", isOn: Binding(get: { healthSave }, set: setHealthSave))
+                            .tint(.track)
+                        if healthSave {
+                            Button("Save earlier runs too") {
+                                Task {
+                                    let saved = await HealthSync.shared.exportPending(in: context, includingEarlier: true)
+                                    healthMessage = saved == 0 ? "Every run is already in Health." : "Saved \(saved) \(saved == 1 ? "run" : "runs") to Health."
+                                }
+                            }
+                        }
+                        Button("Update weight and age from Health") { Task { await updateFromHealth() } }
+                        if healthDenied {
+                            Text("Stride isn't allowed to save workouts. Turn it on in the Health app, under Sharing › Apps › Stride.")
+                                .font(.footnote)
+                                .foregroundStyle(.warning)
+                        } else if let healthMessage {
+                            Text(healthMessage).font(.footnote).foregroundStyle(.inkMuted)
+                        }
+                    } header: {
+                        Text("Apple Health")
+                    } footer: {
+                        Text("Runs from iPhone and runs you add are saved with their route. Apple Watch saves its runs to Health itself.")
+                    }
+                }
+
                 Section("Running") {
                     Picker("Units", selection: $unit) {
                         Text("Kilometers").tag(UnitSystem.metric)
@@ -106,6 +136,7 @@ struct ProfileView: View {
             .navigationDestination(for: Run.self) { RunDetailView(run: $0) }
             .planDestinations()
             .progressDestinations()
+            .onAppear { healthDenied = healthSave && HealthSync.shared.wasDenied }
             .onChange(of: unit) { WatchSync.shared.pushSettings() }
             .onChange(of: maxHeartRate) { WatchSync.shared.pushSettings() }
             .confirmationDialog("Delete all runs, shoes and challenges?", isPresented: $confirmingDeleteAll, titleVisibility: .visible) {
@@ -117,6 +148,40 @@ struct ProfileView: View {
                 }
             }
         }
+    }
+}
+
+extension ProfileView {
+    private func setHealthSave(_ on: Bool) {
+        healthSave = on
+        healthMessage = nil
+        guard on else {
+            healthDenied = false
+            return
+        }
+        // Runs from now on; earlier ones (including any recorded while saving was off) only when asked.
+        UserDefaults.standard.set(Date.now, forKey: StrideSettings.healthSaveSince)
+        Task {
+            _ = await HealthSync.shared.requestAuthorization()
+            healthDenied = HealthSync.shared.wasDenied
+            await HealthSync.shared.exportPending(in: context)
+        }
+    }
+
+    private func updateFromHealth() async {
+        let body = await HealthSync.shared.readBody()
+        var updated: [String] = []
+        if let weight = body.weightKg, weight >= 30, weight <= 200 {
+            weightKg = weight.rounded()
+            updated.append("weight \(Int(weightKg)) kg")
+        }
+        if let age = body.age, age >= 10, age <= 100 {
+            // Tanaka: 208 − 0.7 × age, closer than 220 − age for adults.
+            maxHeartRate = min(max((208 - 0.7 * Double(age)).rounded(), 140), 220)
+            updated.append("max heart rate \(Int(maxHeartRate)) bpm")
+        }
+        healthMessage = updated.isEmpty ? "Health has no weight or birthday to read. Check Health's permissions for Stride."
+                                        : "Updated \(updated.joined(separator: " and "))."
     }
 }
 

@@ -81,10 +81,16 @@ struct EditRunView: View {
                     : Run.estimatedCalories(distance: meters, weightKg: weightKg)
             }
             let changed = run.distance != meters || run.duration != seconds
+            let moved = run.startDate != date
             run.startDate = date
             run.distance = meters
             run.duration = seconds
             if changed { run.updateBestEfforts(route: []) }
+            // Health workouts can't be edited: replace it with one that has the new numbers.
+            if changed || moved, run.healthWorkoutID != nil {
+                let run = run, context = context
+                Task { await HealthSync.shared.replace(run, in: context) }
+            }
         }
         try? context.save()
         dismiss()

@@ -11,10 +11,30 @@
 		5D1DE0000000000000000007 /* StrideUI in Frameworks */ = {isa = PBXBuildFile; productRef = 5D1DE0000000000000000003 /* StrideUI */; };
 		5D1DE0000000000000000008 /* StrideKit in Frameworks */ = {isa = PBXBuildFile; productRef = 5D1DE0000000000000000004 /* StrideKit */; };
 		5D1DE0000000000000000009 /* StrideUI in Frameworks */ = {isa = PBXBuildFile; productRef = 5D1DE0000000000000000005 /* StrideUI */; };
+		5D1DE0000000000000000117 /* StrideKit in Frameworks */ = {isa = PBXBuildFile; productRef = 5D1DE0000000000000000113 /* StrideKit */; };
+		5D1DE0000000000000000118 /* StrideUI in Frameworks */ = {isa = PBXBuildFile; productRef = 5D1DE0000000000000000114 /* StrideUI */; };
+		5D1DE0000000000000000119 /* StrideKit in Frameworks */ = {isa = PBXBuildFile; productRef = 5D1DE0000000000000000115 /* StrideKit */; };
+		5D1DE000000000000000011A /* StrideUI in Frameworks */ = {isa = PBXBuildFile; productRef = 5D1DE0000000000000000116 /* StrideUI */; };
+		5D1DE000000000000000011B /* StrideWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5D1DE0000000000000000100 /* StrideWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		5D1DE000000000000000011C /* StrideWatchWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5D1DE0000000000000000101 /* StrideWatchWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		8372DA773065F74800F97B11 /* StrideWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 8372DA6D3065F74500F97B11 /* StrideWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		5D1DE000000000000000011F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8372DA533065F68700F97B11 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5D1DE0000000000000000105;
+			remoteInfo = StrideWidgets;
+		};
+		5D1DE0000000000000000121 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8372DA533065F68700F97B11 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5D1DE0000000000000000106;
+			remoteInfo = StrideWatchWidgets;
+		};
 		8372DA753065F74800F97B11 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 8372DA533065F68700F97B11 /* Project object */;
@@ -25,6 +45,24 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		5D1DE000000000000000011D /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = PlugIns;
+			files = (
+				5D1DE000000000000000011B /* StrideWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+		};
+		5D1DE000000000000000011E /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = PlugIns;
+			files = (
+				5D1DE000000000000000011C /* StrideWatchWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+		};
 		8372DA7B3065F74800F97B11 /* Embed Watch Content */ = {
 			isa = PBXCopyFilesBuildPhase;
 			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
@@ -37,11 +75,28 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		5D1DE0000000000000000100 /* StrideWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = StrideWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		5D1DE0000000000000000101 /* StrideWatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = StrideWatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		8372DA5B3065F68700F97B11 /* Stride.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Stride.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8372DA6D3065F74500F97B11 /* StrideWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StrideWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		5D1DE0000000000000000102 /* StrideWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = StrideWidgets;
+			sourceTree = "<group>";
+		};
+		5D1DE0000000000000000103 /* StrideWatchWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = StrideWatchWidgets;
+			sourceTree = "<group>";
+		};
+		5D1DE0000000000000000104 /* StrideShared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = StrideShared;
+			sourceTree = "<group>";
+		};
 		8372DA5D3065F68700F97B11 /* Stride */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Stride;
@@ -55,6 +110,20 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		5D1DE0000000000000000108 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				5D1DE0000000000000000117 /* StrideKit in Frameworks */,
+				5D1DE0000000000000000118 /* StrideUI in Frameworks */,
+			);
+		};
+		5D1DE000000000000000010B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				5D1DE0000000000000000119 /* StrideKit in Frameworks */,
+				5D1DE000000000000000011A /* StrideUI in Frameworks */,
+			);
+		};
 		8372DA583065F68700F97B11 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
@@ -77,6 +146,9 @@
 			children = (
 				8372DA5D3065F68700F97B11 /* Stride */,
 				8372DA6E3065F74500F97B11 /* StrideWatch */,
+				5D1DE0000000000000000104 /* StrideShared */,
+				5D1DE0000000000000000102 /* StrideWidgets */,
+				5D1DE0000000000000000103 /* StrideWatchWidgets */,
 				8372DA5C3065F68700F97B11 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -86,6 +158,8 @@
 			children = (
 				8372DA5B3065F68700F97B11 /* Stride.app */,
 				8372DA6D3065F74500F97B11 /* StrideWatch.app */,
+				5D1DE0000000000000000100 /* StrideWidgets.appex */,
+				5D1DE0000000000000000101 /* StrideWatchWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -93,6 +167,51 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		5D1DE0000000000000000105 /* StrideWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5D1DE000000000000000010D /* Build configuration list for PBXNativeTarget "StrideWidgets" */;
+			buildPhases = (
+				5D1DE0000000000000000107 /* Sources */,
+				5D1DE0000000000000000108 /* Frameworks */,
+				5D1DE0000000000000000109 /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				5D1DE0000000000000000102 /* StrideWidgets */,
+				5D1DE0000000000000000104 /* StrideShared */,
+			);
+			name = StrideWidgets;
+			packageProductDependencies = (
+				5D1DE0000000000000000113 /* StrideKit */,
+				5D1DE0000000000000000114 /* StrideUI */,
+			);
+			productName = StrideWidgets;
+			productReference = 5D1DE0000000000000000100 /* StrideWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		5D1DE0000000000000000106 /* StrideWatchWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5D1DE0000000000000000110 /* Build configuration list for PBXNativeTarget "StrideWatchWidgets" */;
+			buildPhases = (
+				5D1DE000000000000000010A /* Sources */,
+				5D1DE000000000000000010B /* Frameworks */,
+				5D1DE000000000000000010C /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				5D1DE0000000000000000103 /* StrideWatchWidgets */,
+			);
+			name = StrideWatchWidgets;
+			packageProductDependencies = (
+				5D1DE0000000000000000115 /* StrideKit */,
+				5D1DE0000000000000000116 /* StrideUI */,
+			);
+			productName = StrideWatchWidgets;
+			productReference = 5D1DE0000000000000000101 /* StrideWatchWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		8372DA5A3065F68700F97B11 /* Stride */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 8372DA663065F68900F97B11 /* Build configuration list for PBXNativeTarget "Stride" */;
@@ -100,14 +219,17 @@
 				8372DA573065F68700F97B11 /* Sources */,
 				8372DA583065F68700F97B11 /* Frameworks */,
 				8372DA593065F68700F97B11 /* Resources */,
+				5D1DE000000000000000011D /* Embed Foundation Extensions */,
 				8372DA7B3065F74800F97B11 /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				5D1DE0000000000000000120 /* PBXTargetDependency */,
 				8372DA763065F74800F97B11 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
+				5D1DE0000000000000000104 /* StrideShared */,
 				8372DA5D3065F68700F97B11 /* Stride */,
 			);
 			name = Stride;
@@ -126,8 +248,12 @@
 				8372DA693065F74500F97B11 /* Sources */,
 				8372DA6A3065F74500F97B11 /* Frameworks */,
 				8372DA6B3065F74500F97B11 /* Resources */,
+				5D1DE000000000000000011E /* Embed Foundation Extensions */,
 			);
 			buildRules = (
+			);
+			dependencies = (
+				5D1DE0000000000000000122 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				8372DA6E3065F74500F97B11 /* StrideWatch */,
@@ -151,6 +277,12 @@
 				LastSwiftUpdateCheck = 2700;
 				LastUpgradeCheck = 2700;
 				TargetAttributes = {
+					5D1DE0000000000000000105 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					5D1DE0000000000000000106 = {
+						CreatedOnToolsVersion = 27.0;
+					};
 					8372DA5A3065F68700F97B11 = {
 						CreatedOnToolsVersion = 27.0;
 					};
@@ -177,12 +309,24 @@
 			projectRoot = "";
 			targets = (
 				8372DA5A3065F68700F97B11 /* Stride */,
+				5D1DE0000000000000000105 /* StrideWidgets */,
+				5D1DE0000000000000000106 /* StrideWatchWidgets */,
 				8372DA6C3065F74500F97B11 /* StrideWatch */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		5D1DE0000000000000000109 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		5D1DE000000000000000010C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
 		8372DA593065F68700F97B11 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
@@ -196,6 +340,16 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		5D1DE0000000000000000107 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		5D1DE000000000000000010A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
 		8372DA573065F68700F97B11 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
@@ -209,6 +363,16 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		5D1DE0000000000000000120 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5D1DE0000000000000000105 /* StrideWidgets */;
+			targetProxy = 5D1DE000000000000000011F /* PBXContainerItemProxy */;
+		};
+		5D1DE0000000000000000122 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5D1DE0000000000000000106 /* StrideWatchWidgets */;
+			targetProxy = 5D1DE0000000000000000121 /* PBXContainerItemProxy */;
+		};
 		8372DA763065F74800F97B11 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 8372DA6C3065F74500F97B11 /* StrideWatch */;
@@ -217,6 +381,134 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		5D1DE000000000000000010E /* Debug configuration for PBXNativeTarget "StrideWidgets" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/StrideWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 968FPR7Y35;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/StrideWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Stride;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = alexandrejunior.Stride.StrideWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		5D1DE000000000000000010F /* Release configuration for PBXNativeTarget "StrideWidgets" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/StrideWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 968FPR7Y35;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/StrideWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Stride;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = alexandrejunior.Stride.StrideWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		5D1DE0000000000000000111 /* Debug configuration for PBXNativeTarget "StrideWatchWidgets" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/StrideWatchWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 968FPR7Y35;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/StrideWatchWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Stride;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = alexandrejunior.Stride.watchkitapp.StrideWatchWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+			};
+			name = Debug;
+		};
+		5D1DE0000000000000000112 /* Release configuration for PBXNativeTarget "StrideWatchWidgets" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/StrideWatchWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 968FPR7Y35;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/StrideWatchWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Stride;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = alexandrejunior.Stride.watchkitapp.StrideWatchWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+			};
+			name = Release;
+		};
 		8372DA643065F68900F97B11 /* Debug configuration for PBXProject "Stride" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -483,6 +775,22 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		5D1DE000000000000000010D /* Build configuration list for PBXNativeTarget "StrideWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5D1DE000000000000000010E /* Debug configuration for PBXNativeTarget "StrideWidgets" */,
+				5D1DE000000000000000010F /* Release configuration for PBXNativeTarget "StrideWidgets" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		5D1DE0000000000000000110 /* Build configuration list for PBXNativeTarget "StrideWatchWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5D1DE0000000000000000111 /* Debug configuration for PBXNativeTarget "StrideWatchWidgets" */,
+				5D1DE0000000000000000112 /* Release configuration for PBXNativeTarget "StrideWatchWidgets" */,
+			);
+			defaultConfigurationName = Release;
+		};
 		8372DA563065F68700F97B11 /* Build configuration list for PBXProject "Stride" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -533,6 +841,26 @@
 			productName = StrideKit;
 		};
 		5D1DE0000000000000000005 /* StrideUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5D1DE0000000000000000001 /* XCLocalSwiftPackageReference "../StrideKit" */;
+			productName = StrideUI;
+		};
+		5D1DE0000000000000000113 /* StrideKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5D1DE0000000000000000001 /* XCLocalSwiftPackageReference "../StrideKit" */;
+			productName = StrideKit;
+		};
+		5D1DE0000000000000000114 /* StrideUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5D1DE0000000000000000001 /* XCLocalSwiftPackageReference "../StrideKit" */;
+			productName = StrideUI;
+		};
+		5D1DE0000000000000000115 /* StrideKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5D1DE0000000000000000001 /* XCLocalSwiftPackageReference "../StrideKit" */;
+			productName = StrideKit;
+		};
+		5D1DE0000000000000000116 /* StrideUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 5D1DE0000000000000000001 /* XCLocalSwiftPackageReference "../StrideKit" */;
 			productName = StrideUI;
