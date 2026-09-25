@@ -30,6 +30,10 @@ struct NewChallengeView: View {
     @State private var frame: Frame = .thisMonth
     @State private var endDate = Calendar.current.date(byAdding: .day, value: 14, to: .now) ?? .now
     @State private var title = ""
+    @State private var upsell: ProFeature?
+
+    /// Suggested challenges are free; making your own comes with Stride Pro.
+    private var canMakeOwn: Bool { ProStore.shared.isPro }
 
     var body: some View {
         NavigationStack {
@@ -59,6 +63,12 @@ struct NewChallengeView: View {
                     }
                 }
 
+                if !canMakeOwn {
+                    Section("Your own") {
+                        ProUpsellRow(symbol: "slider.horizontal.3", title: "Make your own",
+                                     detail: "Pick what counts, the target and the time frame.") { upsell = .challenges }
+                    }
+                } else {
                 Section {
                     Picker("Count", selection: $metric) {
                         ForEach(ChallengeMetric.allCases) { Label($0.title, systemImage: $0.symbol).tag($0) }
@@ -88,9 +98,11 @@ struct NewChallengeView: View {
                     Button("Start challenge") { create(ownChallenge) }
                         .disabled(storedTarget <= 0)
                 }
+                }
             }
             .scrollContentBackground(.hidden)
             .background(Color.surface)
+            .proPaywall($upsell)
             .navigationTitle("New challenge")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -148,6 +160,11 @@ struct NewChallengeView: View {
     }
 
     private func create(_ challenge: Challenge) {
+        // Your own (no template) needs Stride Pro.
+        guard challenge.templateID != nil || canMakeOwn else {
+            upsell = .challenges
+            return
+        }
         context.insert(challenge)
         try? context.save()
         dismiss()

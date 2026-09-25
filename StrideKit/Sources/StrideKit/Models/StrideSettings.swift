@@ -43,6 +43,11 @@ public enum StrideSettings {
     public static let cheerWeekKey = "cheerWeekKey"
     /// A random id for this install, so runs remember which device recorded them.
     public static let deviceID = "deviceID"
+    /// The welcome pages were finished on this device. Not synced: each device shows them once.
+    public static let hasOnboarded = "hasOnboarded"
+    /// Stride Pro as last confirmed by the App Store on this device, so locks don't flicker at launch.
+    /// Not synced: Pro belongs to the Apple Account, not the iCloud one.
+    public static let proLastKnown = "proLastKnown"
 
     /// Reads a Bool setting that defaults to true when never set.
     public static func bool(_ key: String, default value: Bool = true) -> Bool {

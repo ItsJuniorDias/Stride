@@ -14,7 +14,8 @@ struct PlansView: View {
             VStack(alignment: .leading, spacing: Space.x3) {
                 ForEach(TrainingPlan.catalog.sorted { ($0.id == activePlanID ? 0 : 1) < ($1.id == activePlanID ? 0 : 1) }) { plan in
                     NavigationLink(value: PlanRoute.plan(plan.id)) {
-                        PlanCard(plan: plan, isActive: plan.id == activePlanID, completed: completed)
+                        PlanCard(plan: plan, isActive: plan.id == activePlanID, isLocked: !plan.isFree && !ProStore.shared.isPro,
+                                 completed: completed)
                     }
                     .buttonStyle(.plain)
                 }
@@ -29,6 +30,8 @@ struct PlansView: View {
 private struct PlanCard: View {
     let plan: TrainingPlan
     let isActive: Bool
+    /// A Stride Pro plan the runner can preview but not start.
+    let isLocked: Bool
     let completed: Set<String>
 
     var body: some View {
@@ -41,7 +44,7 @@ private struct PlanCard: View {
                 HStack {
                     Text(plan.name).font(.title3.bold()).foregroundStyle(.ink)
                     Spacer()
-                    if isActive { StatusChip("Active", indicator: .success) }
+                    if isActive { StatusChip("Active", indicator: .success) } else if isLocked { TagBadge("Pro") }
                 }
                 Text(plan.level).metricLabelStyle()
                 Text(plan.summary).font(.subheadline).foregroundStyle(.inkMuted)
@@ -87,9 +90,12 @@ struct PlanDetailView: View {
     @State private var sessionToStart: Workout?
     @State private var confirmingStop = false
     @State private var locationProblem: String?
+    @State private var upsell: ProFeature?
 
     private var completed: Set<String> { PlanProgress.completed(from: completedRaw) }
     private var isActive: Bool { activePlanID == plan.id }
+    /// A Stride Pro plan without Pro: its weeks stay browsable, but nothing starts or gets marked.
+    private var isLocked: Bool { !plan.isFree && !ProStore.shared.isPro }
     private var next: Workout? { plan.nextSession(completed: completed) }
 
     var body: some View {
@@ -115,7 +121,16 @@ struct PlanDetailView: View {
             }
             .listRowBackground(Color.surfaceRaised)
 
-            if !isActive {
+            if isLocked {
+                Section {
+                    Button("Unlock with Stride Pro") { upsell = .plan(plan.id) }
+                        .buttonStyle(.stridePrimary)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets())
+                } footer: {
+                    Text(isActive ? "Your progress is kept. Continue any time with Stride Pro." : "First 5K is free for everyone.")
+                }
+            } else if !isActive {
                 // Its own section, so the full-width button sits under the card instead of cutting its corners.
                 Section {
                     Button("Start this plan") { activePlanID = plan.id }
@@ -145,6 +160,7 @@ struct PlanDetailView: View {
             Text(session.detail)
         }
         .locationProblemAlert($locationProblem)
+        .proPaywall($upsell)
         .confirmationDialog("Stop \(plan.name)?", isPresented: $confirmingStop, titleVisibility: .visible) {
             Button("Stop Plan", role: .destructive) { activePlanID = "" }
         } message: {
@@ -156,7 +172,7 @@ struct PlanDetailView: View {
         let isDone = completed.contains(session.id)
         let isNext = isActive && session.id == next?.id
         return Button {
-            sessionToStart = session
+            if isLocked { upsell = .plan(plan.id) } else { sessionToStart = session }
         } label: {
             HStack(spacing: Space.x3) {
                 Image(systemName: isDone ? "checkmark.circle.fill" : isNext ? "play.circle.fill" : "circle")
@@ -179,13 +195,19 @@ struct PlanDetailView: View {
         }
         .buttonStyle(.plain)
         .swipeActions {
-            Button(isDone ? "Not done" : "Done") { PlanProgress.set(session.id, done: !isDone); completedRaw = UserDefaults.standard.string(forKey: StrideSettings.completedPlanSessions) ?? "" }
-                .tint(isDone ? .lineStrong : .success)
+            if !isLocked {
+                Button(isDone ? "Not done" : "Done") { PlanProgress.set(session.id, done: !isDone); completedRaw = UserDefaults.standard.string(forKey: StrideSettings.completedPlanSessions) ?? "" }
+                    .tint(isDone ? .lineStrong : .success)
+            }
         }
         .accessibilityValue(isDone ? "Done" : isNext ? "Next" : "")
     }
 
     private func start(_ session: Workout) {
+        guard !isLocked else {
+            upsell = .plan(plan.id)
+            return
+        }
         if let problem = PlanSessionLauncher.locationProblem {
             locationProblem = problem
             return

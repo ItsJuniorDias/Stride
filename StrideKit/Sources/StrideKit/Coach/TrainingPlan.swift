@@ -17,6 +17,9 @@ public struct TrainingPlan: Identifiable, Hashable, Sendable {
         catalog.first { $0.id == id }
     }
 
+    /// First 5K is free for everyone; the other plans come with Stride Pro.
+    public var isFree: Bool { id == "first-5k" }
+
     /// The first session not in `completed`, or nil when the plan is done.
     public func nextSession(completed: Set<String>) -> Workout? {
         sessions.first { !completed.contains($0.id) }

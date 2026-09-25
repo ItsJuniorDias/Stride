@@ -15,6 +15,10 @@ struct PeriodStatsCard: View {
     /// Periods back from the current one: 0 is this week, month or year.
     @State private var offset = 0
     @State private var selectedDate: Date?
+    @State private var upsell: ProFeature?
+
+    /// Year and all time come with Stride Pro; week and month are free.
+    private var isLocked: Bool { (period == .year || period == .all) && !ProStore.shared.isPro }
 
     private var interval: DateInterval {
         RunStats.interval(of: period, containing: RunStats.shifted(now, period: period, by: -offset), firstRun: firstRun)
@@ -30,6 +34,49 @@ struct PeriodStatsCard: View {
             }
             .pickerStyle(.segmented)
 
+            if isLocked {
+                lockedCard(totals: totals, interval: interval)
+            } else {
+                stats(interval: interval, totals: totals, buckets: buckets)
+            }
+        }
+        .onChange(of: period) {
+            offset = 0
+            selectedDate = nil
+        }
+        .onChange(of: offset) { selectedDate = nil }
+        .sensoryFeedback(.selection, trigger: offset)
+        .proPaywall($upsell)
+    }
+
+    /// Year or all time without Pro: what it would show and the way in. The yearly goal is the
+    /// runner's own, so its progress stays visible.
+    private func lockedCard(totals: RunTotals, interval: DateInterval) -> some View {
+        VStack(alignment: .leading, spacing: Space.x3) {
+            Illustration(name: "recordsTrophy", contentMode: .fill)
+                .frame(height: 130)
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+            HStack(spacing: Space.x2) {
+                Text(period == .all ? "All time" : "Your year").font(.title3.bold()).foregroundStyle(.ink)
+                TagBadge("Pro")
+            }
+            Text(period == .all
+                 ? "Every year since your first run, side by side, with your totals and pace."
+                 : "A bar for every month, how it compares with last year, and your totals and pace.")
+                .font(.subheadline)
+                .foregroundStyle(.inkMuted)
+            Button("See Stride Pro") { upsell = .stats }
+                .buttonStyle(.strideSecondary)
+            if period == .year, offset == 0 {
+                yearlyGoalRow(distance: totals.distance, interval: interval)
+                    .padding(.top, Space.x2)
+            }
+        }
+        .raisedCard()
+    }
+
+    private func stats(interval: DateInterval, totals: RunTotals, buckets: [StatsBucket]) -> some View {
             VStack(alignment: .leading, spacing: Space.x4) {
                 header(interval)
 
@@ -60,13 +107,6 @@ struct PeriodStatsCard: View {
                 }
             }
             .raisedCard()
-        }
-        .onChange(of: period) {
-            offset = 0
-            selectedDate = nil
-        }
-        .onChange(of: offset) { selectedDate = nil }
-        .sensoryFeedback(.selection, trigger: offset)
     }
 
     // MARK: Header

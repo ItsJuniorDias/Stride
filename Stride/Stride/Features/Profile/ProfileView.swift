@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import StoreKit
 import StrideKit
 import StrideUI
 
@@ -21,10 +22,35 @@ struct ProfileView: View {
     @AppStorage(StrideSettings.healthSave) private var healthSave = false
     @State private var healthMessage: String?
     @State private var healthDenied = false
+    @State private var upsell: ProFeature?
+    @State private var managingSubscription = false
+    @State private var restoreMessage: String?
+    @State private var isRestoring = false
+    private var pro: ProStore { .shared }
 
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    ProStatusRow(summary: pro.summary, isPro: pro.isPro) { upsell = .general }
+                    if pro.summary.canManage, pro.groupID != nil {
+                        Button("Manage subscription") { managingSubscription = true }
+                    }
+                    if !pro.isPro {
+                        Button(isRestoring ? "Restoring…" : "Restore purchases") {
+                            isRestoring = true
+                            Task {
+                                restoreMessage = await pro.restore()
+                                isRestoring = false
+                            }
+                        }
+                        .disabled(isRestoring)
+                    }
+                    if let restoreMessage {
+                        Text(restoreMessage).font(.footnote).foregroundStyle(.inkMuted)
+                    }
+                }
+
                 Section {
                     LabeledContent("Name") {
                         TextField("Your name", text: $userName)
@@ -151,6 +177,12 @@ struct ProfileView: View {
             .task { await FriendsService.shared.checkAccount() }
             .onChange(of: unit) { WatchSync.shared.pushSettings() }
             .onChange(of: maxHeartRate) { WatchSync.shared.pushSettings() }
+            .proPaywall($upsell)
+            .manageSubscriptionsSheet(isPresented: $managingSubscription, subscriptionGroupID: pro.groupID ?? "")
+            // Manage subscription may have changed the plan or turned renewal off.
+            .onChange(of: managingSubscription) { _, isOpen in
+                if !isOpen { Task { await pro.refresh() } }
+            }
             .confirmationDialog("Delete all runs, shoes and challenges?", isPresented: $confirmingDeleteAll, titleVisibility: .visible) {
                 Button("Delete All", role: .destructive) {
                     // One by one: batch deletes don't reach iCloud.
@@ -213,6 +245,41 @@ extension ProfileView {
         }
         healthMessage = updated.isEmpty ? "Health has no weight or birthday to read. Check Health's permissions for Stride."
                                         : "Updated \(updated.joined(separator: " and "))."
+    }
+}
+
+/// Profile's Stride Pro row: the plan and its next date when subscribed, the way in when not.
+private struct ProStatusRow: View {
+    let summary: ProSummary
+    let isPro: Bool
+    let upgrade: () -> Void
+
+    var body: some View {
+        if isPro {
+            content
+        } else {
+            Button(action: upgrade) { content.contentShape(Rectangle()) }
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens Stride Pro")
+        }
+    }
+
+    private var content: some View {
+        HStack(spacing: Space.x3) {
+            ProSymbol("bolt.fill")
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Stride Pro").font(.headline).foregroundStyle(.ink)
+                Text(summary.detail).font(.subheadline).foregroundStyle(.inkMuted)
+            }
+            Spacer(minLength: Space.x2)
+            if let chip = summary.chip {
+                StatusChip(chip.title, indicator: chip.isWarning ? .warning : .success, background: .surfaceSunken)
+            } else {
+                Image(systemName: "chevron.right").foregroundStyle(.inkMuted)
+            }
+        }
+        .padding(.vertical, Space.x1)
+        .accessibilityElement(children: .combine)
     }
 }
 

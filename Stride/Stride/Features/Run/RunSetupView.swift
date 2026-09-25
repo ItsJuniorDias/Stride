@@ -22,6 +22,10 @@ struct RunSetupView: View {
     /// The default shoe: picking one here makes it the shoe for Apple Watch and manual runs too.
     @AppStorage(StrideSettings.defaultShoeID) private var defaultShoeRaw = ""
     @State private var camera: MapCameraPosition = .userLocation(fallback: .automatic)
+    @State private var upsell: ProFeature?
+
+    /// Intervals and target-pace alerts come with Stride Pro.
+    private var isPro: Bool { ProStore.shared.isPro }
 
     private let runTypes: [RunType] = [.free, .distance, .time, .intervals]
 
@@ -93,6 +97,11 @@ struct RunSetupView: View {
         } message: {
             Text(mirrored.error ?? "")
         }
+        .proPaywall($upsell)
+        // Pro ended while Intervals was picked: back to a free run.
+        .onChange(of: isPro) { _, isPro in
+            if !isPro, runType == .intervals { runType = .free }
+        }
     }
 
     private var panel: some View {
@@ -127,7 +136,11 @@ struct RunSetupView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Space.x2) {
                     ForEach(runTypes) { type in
-                        SelectableChip(type.title, isSelected: runType == type) { runType = type }
+                        let locked = type == .intervals && !isPro
+                        SelectableChip(type.title, isSelected: runType == type, tag: locked ? "Pro" : nil) {
+                            if locked { upsell = .intervals } else { runType = type }
+                        }
+                        .accessibilityHint(locked ? "Needs Stride Pro" : "")
                     }
                 }
             }
@@ -237,8 +250,30 @@ struct RunSetupView: View {
         .background(Color.surfaceSunken.opacity(0.85), in: RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
     }
 
-    /// Off, or a pace to hold; the coach says when the runner drifts more than 10 s off it.
-    private var targetPaceRow: some View {
+    /// Off, or a pace to hold; the coach says when the runner drifts more than 10 s off it. A Stride Pro
+    /// feature: without Pro the row opens the paywall, and a pace remembered from before is kept but unused.
+    @ViewBuilder private var targetPaceRow: some View {
+        if isPro {
+            targetPaceMenu
+        } else {
+            Button { upsell = .targetPace } label: {
+                HStack(spacing: Space.x2) {
+                    Label("Target pace", systemImage: "gauge.with.needle")
+                        .foregroundStyle(.ink)
+                    Spacer()
+                    TagBadge("Pro")
+                }
+                .font(.subheadline.weight(.medium))
+                .padding(.horizontal, Space.x4)
+                .frame(minHeight: Dimension.hitMin)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Needs Stride Pro")
+        }
+    }
+
+    private var targetPaceMenu: some View {
         let perUnit = Binding<Double>(
             // Rounded to a 5 s option and kept inside the list, so the picker always has a matching tag.
             get: {
@@ -300,7 +335,7 @@ struct RunSetupView: View {
         case .time:
             return MirrorGoal(type: .time, duration: TimeInterval(targetMinutes * 60), name: "\(targetMinutes) min")
         case .intervals:
-            return MirrorGoal(type: .intervals, name: intervalPreset.name)
+            return isPro ? MirrorGoal(type: .intervals, name: intervalPreset.name) : nil
         case .free:
             return nil
         }
@@ -308,11 +343,11 @@ struct RunSetupView: View {
 
     private var configuration: RunTracker.Configuration {
         var configuration = RunTracker.Configuration(type: runType, shoeID: shoeID, autoPause: autoPause)
-        configuration.targetPace = targetPace > 0 ? targetPace : nil
+        configuration.targetPace = targetPace > 0 && isPro ? targetPace : nil
         switch runType {
         case .distance: configuration.targetDistance = selectedMeters
         case .time: configuration.targetDuration = TimeInterval(targetMinutes * 60)
-        case .intervals: configuration.workout = intervalPreset
+        case .intervals: configuration.workout = isPro ? intervalPreset : nil
         case .free: break
         }
         return configuration

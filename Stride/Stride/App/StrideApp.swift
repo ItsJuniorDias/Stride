@@ -24,6 +24,8 @@ struct StrideApp: App {
         SettingsSync.shared.start()
         // Must be installed at launch: HealthKit may start the app just to hand over a Watch workout.
         MirroredWorkout.shared.activate()
+        // Also at launch, so no renewal, refund or Family Sharing change is missed.
+        ProStore.shared.start()
     }
 
     var body: some Scene {

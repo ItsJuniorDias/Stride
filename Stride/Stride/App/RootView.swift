@@ -13,6 +13,9 @@ struct RootView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab: AppTab = .home
+    @AppStorage(StrideSettings.hasOnboarded) private var hasOnboarded = false
+    /// Stride Pro, offered once right after the welcome pages.
+    @State private var showingPaywall = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -55,6 +58,19 @@ struct RootView: View {
                         .interactiveDismissDisabled()
                 }
         }
+        // The welcome pages on a device's first launch, then Stride Pro (closable) for runners without it.
+        .background {
+            Color.clear
+                .fullScreenCover(isPresented: Binding(get: { !hasOnboarded && !tracker.isPresented }, set: { _ in }),
+                                 onDismiss: { if !ProStore.shared.isPro { showingPaywall = true } }) {
+                    OnboardingView { hasOnboarded = true }
+                        .interactiveDismissDisabled()
+                }
+        }
+        .background {
+            Color.clear
+                .sheet(isPresented: $showingPaywall) { ProPaywallView(feature: .general) }
+        }
         .task { tracker.restoreIfNeeded() }
         .task { await RunMaintenance.backfillBestEfforts(in: context) }
         .task { Vitals.removeOrphans(in: context) }
@@ -80,7 +96,11 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { tracker.checkpoint() }
             // A Live Activity refused while the app was in the background can start now.
-            if phase == .active { tracker.refreshLiveActivity() }
+            if phase == .active {
+                tracker.refreshLiveActivity()
+                // Nothing fires when a subscription simply expires or renews while the app is closed.
+                Task { await ProStore.shared.refresh() }
+            }
         }
         .fullScreenCover(isPresented: Binding(get: { tracker.isPresented }, set: { _ in }), onDismiss: deleteDiscardedRun) {
             LiveRunView()

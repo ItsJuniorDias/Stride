@@ -9,6 +9,7 @@ struct ActivePlanCard: View {
     @AppStorage(StrideSettings.completedPlanSessions) private var completedRaw = ""
     @AppStorage(StrideSettings.autoPause) private var autoPause = true
     @State private var locationProblem: String?
+    @State private var upsell: ProFeature?
 
     var body: some View {
         if let plan = TrainingPlan.plan(id: activePlanID) {
@@ -27,17 +28,35 @@ struct ActivePlanCard: View {
                         Text(next.detail).font(.subheadline).foregroundStyle(.inkMuted)
                     }
                     PlanProgressBar(progress: plan.progress(completed: completed))
-                    Button("Start session") { start(next) }
-                        .buttonStyle(.strideSecondary)
+                    if plan.isFree || ProStore.shared.isPro {
+                        Button("Start session") { start(next) }
+                            .buttonStyle(.strideSecondary)
+                    } else {
+                        // Pro ended: the plan and its progress stay, and pick up where they left off.
+                        Button("Continue with Stride Pro") { upsell = .plan(plan.id) }
+                            .buttonStyle(.strideSecondary)
+                    }
                 } else {
                     Label("Plan complete. Well done!", systemImage: "trophy.fill")
                         .font(.headline)
                         .foregroundStyle(.success)
+                    if plan.id == "first-5k", let tenK = TrainingPlan.plan(id: "10k") {
+                        NavigationLink(value: PlanRoute.plan(tenK.id)) {
+                            HStack(spacing: Space.x2) {
+                                Text("Next: \(tenK.name) plan").font(.subheadline.weight(.semibold)).foregroundStyle(.lane)
+                                if !ProStore.shared.isPro { TagBadge("Pro") }
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.inkMuted)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
             .padding(Space.x4)
             .background(Color.surfaceRaised, in: RoundedRectangle(cornerRadius: Radius.md))
             .locationProblemAlert($locationProblem)
+            .proPaywall($upsell)
         } else {
             NavigationLink(value: PlanRoute.list) {
                 HStack(spacing: Space.x3) {
