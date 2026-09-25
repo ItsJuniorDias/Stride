@@ -92,10 +92,12 @@ final class MirroredWorkout: NSObject {
          HKQuantityType(.distanceWalkingRunning), HKObjectType.workoutType()]
     }
 
-    /// Asks once; HealthKit doesn't show the sheet again after the runner has answered.
+    /// Asks once; HealthKit doesn't show the sheet again after the runner has answered. Includes what
+    /// Stride on Apple Watch saves (workouts and their routes): its access is filed under this app.
     func requestAuthorization() async {
         guard HKHealthStore.isHealthDataAvailable() else { return }
-        try? await healthStore.requestAuthorization(toShare: [HKObjectType.workoutType()], read: readTypes)
+        let share: Set<HKSampleType> = [HKObjectType.workoutType(), HKSeriesType.workoutRoute()]
+        try? await healthStore.requestAuthorization(toShare: share, read: readTypes)
     }
 
     // MARK: Controls

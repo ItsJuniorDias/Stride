@@ -19,8 +19,23 @@ struct WatchHomeView: View {
     var body: some View {
         NavigationStack {
             List {
+                // Access problems come first, where they're seen before a start button is tapped.
+                if workout.isCheckingAccess {
+                    ProgressView("Checking Health access…")
+                }
+                if let message = workout.authorizationError {
+                    Label(message, systemImage: "heart.slash")
+                        .font(.caption)
+                        .foregroundStyle(.warning)
+                }
+                if workout.locationDenied {
+                    Label("GPS off: no route or pace. Turn on Location for Stride in Settings.", systemImage: "location.slash")
+                        .font(.caption)
+                        .foregroundStyle(.warning)
+                }
+
                 Button {
-                    workout.start(.init())
+                    Task { await workout.start(.init()) }
                 } label: {
                     VStack(alignment: .leading, spacing: Space.x1) {
                         Image(systemName: "figure.run")
@@ -34,6 +49,7 @@ struct WatchHomeView: View {
                     }
                     .padding(.vertical, Space.x2)
                 }
+                .disabled(workout.isCheckingAccess)
 
                 if let snapshot, let me = snapshot.leaderboard().first(where: \.isMe), snapshot.leaderboard().count > 1 {
                     NavigationLink {
@@ -53,23 +69,13 @@ struct WatchHomeView: View {
                 Section("Goals") {
                     ForEach(goals, id: \.title) { item in
                         Button {
-                            workout.start(item.goal)
+                            Task { await workout.start(item.goal) }
                         } label: {
                             Label(item.title, systemImage: item.systemImage)
                         }
                     }
                 }
-
-                if let message = workout.authorizationError {
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.warning)
-                }
-                if workout.locationDenied {
-                    Label("GPS off: no route or pace. Turn on Location for Stride in Settings.", systemImage: "location.slash")
-                        .font(.caption)
-                        .foregroundStyle(.warning)
-                }
+                .disabled(workout.isCheckingAccess)
             }
             .navigationTitle("Stride")
         }

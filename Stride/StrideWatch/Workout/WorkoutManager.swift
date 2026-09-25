@@ -56,6 +56,10 @@ final class WorkoutManager: NSObject {
     private(set) var authorizationError: String?
     /// A workout failed to start or stopped unexpectedly, shown as an alert.
     private(set) var workoutError: String?
+    /// Title of that alert; missing Health access gets its own.
+    private(set) var workoutErrorTitle = "Workout problem"
+    /// A start is waiting for Health access; the start list disables its buttons meanwhile.
+    private(set) var isCheckingAccess = false
     private(set) var locationDenied = false
 
     let healthStore = HKHealthStore()
@@ -120,15 +124,45 @@ final class WorkoutManager: NSObject {
     @ObservationIgnored private var routeEpochBase = 0
     /// Started from iPhone's "Start on Watch": the goal chosen there may follow over the mirrored session.
     @ObservationIgnored private var startedFromCompanion = false
+    /// The Health and location request in flight; every caller shares it.
+    @ObservationIgnored private var authorizationRequest: Task<Void, Never>?
 
     // MARK: Authorization
 
+    /// Workout sharing as Health reports it. Stays `.notDetermined` while a request waits for an
+    /// answer that hasn't arrived, e.g. one watchOS handed to the paired iPhone.
+    private var workoutAccess: HKAuthorizationStatus {
+        healthStore.authorizationStatus(for: .workoutType())
+    }
+
     private var canSaveWorkouts: Bool {
-        healthStore.authorizationStatus(for: .workoutType()) == .sharingAuthorized
+        workoutAccess == .sharingAuthorized
+    }
+
+    /// What to do about missing Health access, for the start list and the alert.
+    private var healthAccessMessage: String {
+        workoutAccess == .notDetermined
+            ? "Stride needs Health access to record runs. Open Stride on your iPhone and allow it, then try again."
+            : "Health access is off. On iPhone, open Health › your picture › Privacy › Apps › Stride and turn on Workouts."
     }
 
     /// Asks for Health and location access from the start list, so no prompt appears over a countdown.
+    /// Calls made while a request is out wait for that one.
     func requestAuthorization() async {
+        await authorizationRequestTask().value
+    }
+
+    private func authorizationRequestTask() -> Task<Void, Never> {
+        if let authorizationRequest { return authorizationRequest }
+        let task = Task { [weak self] in
+            await self?.askForAccess()
+            self?.authorizationRequest = nil
+        }
+        authorizationRequest = task
+        return task
+    }
+
+    private func askForAccess() async {
         let share: Set<HKSampleType> = [HKObjectType.workoutType(), HKSeriesType.workoutRoute()]
         let read: Set<HKObjectType> = [
             HKQuantityType(.heartRate),
@@ -137,11 +171,20 @@ final class WorkoutManager: NSObject {
             HKObjectType.workoutType(),
         ]
         try? await healthStore.requestAuthorization(toShare: share, read: read)
-        // Denying doesn't throw, so check the result instead of the call.
-        authorizationError = canSaveWorkouts ? nil : "Allow Stride to save workouts in Settings › Health › Data Access."
+        // Denying doesn't throw, and a request handed to iPhone can return before it's answered:
+        // check the result instead of the call.
+        authorizationError = canSaveWorkouts ? nil : healthAccessMessage
 
         if locationManager.authorizationStatus == .notDetermined {
             locationManager.requestWhenInUseAuthorization()
+        }
+        updateLocationAccess()
+    }
+
+    /// Re-reads access when the app becomes active, e.g. after the runner allowed it on iPhone or in Settings.
+    func updateAccess() {
+        if authorizationError != nil {
+            authorizationError = canSaveWorkouts ? nil : healthAccessMessage
         }
         updateLocationAccess()
     }
@@ -150,14 +193,48 @@ final class WorkoutManager: NSObject {
         locationDenied = [.denied, .restricted].contains(locationManager.authorizationStatus)
     }
 
+    /// True once workouts can be saved. An unanswered request is asked again, and an answer given on
+    /// iPhone gets up to `patience` to reach the Watch. Anything else ends in an alert that says how
+    /// to allow access, so a start never fails silently.
+    private func ensureWorkoutAccess(patience: Duration = .zero) async -> Bool {
+        if canSaveWorkouts, locationManager.authorizationStatus != .notDetermined { return true }
+        isCheckingAccess = true
+        defer { isCheckingAccess = false }
+        if workoutAccess == .notDetermined || locationManager.authorizationStatus == .notDetermined {
+            // A request handed to iPhone may only return once it's answered there, so it isn't
+            // awaited: waiting stops at an answer, when the request returns, or after 15 s.
+            _ = authorizationRequestTask()
+            let requestDeadline = ContinuousClock.now + .seconds(15)
+            while authorizationRequest != nil, workoutAccess == .notDetermined, ContinuousClock.now < requestDeadline {
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+        }
+        let answerDeadline = ContinuousClock.now + patience
+        while workoutAccess == .notDetermined, ContinuousClock.now < answerDeadline {
+            try? await Task.sleep(for: .milliseconds(500))
+        }
+        guard canSaveWorkouts else {
+            authorizationError = healthAccessMessage
+            fail(healthAccessMessage, title: "Allow Health access")
+            return false
+        }
+        authorizationError = nil
+        return true
+    }
+
     // MARK: Lifecycle
 
-    func start(_ goal: Goal) {
-        guard phase == .idle else { return }
-        guard canSaveWorkouts else {
-            authorizationError = "Allow Stride to save workouts in Settings › Health › Data Access."
-            return
-        }
+    /// Starts a run from the start list once Health access is there (see ``ensureWorkoutAccess(patience:)``).
+    func start(_ goal: Goal) async {
+        guard phase == .idle, session == nil, !isCheckingAccess else { return }
+        guard await ensureWorkoutAccess() else { return }
+        // iPhone may have started a run while access was being checked.
+        guard phase == .idle, session == nil else { return }
+        begin(goal)
+    }
+
+    /// The countdown, then the workout. Callers have checked Health access.
+    private func begin(_ goal: Goal) {
         self.goal = goal
         splitUnit = UnitSystem(rawValue: UserDefaults.standard.string(forKey: StrideSettings.unitSystem) ?? "") ?? .metric
         do {
@@ -298,16 +375,18 @@ final class WorkoutManager: NSObject {
             return
         case .ended, .idle:
             if phase == .ended { reset() }
-            if healthStore.authorizationStatus(for: .workoutType()) == .notDetermined
-                || locationManager.authorizationStatus == .notDetermined {
-                await requestAuthorization()
+            // A start from the list may be checking access: let it finish, then start here if it didn't.
+            while isCheckingAccess {
+                try? await Task.sleep(for: .milliseconds(250))
             }
-            guard canSaveWorkouts else {
-                fail("Allow Stride to save workouts in Settings › Health › Data Access.")
-                return
-            }
-            start(Goal())
-            startedFromCompanion = phase != .idle
+            guard phase == .idle, session == nil else { return }
+            // iPhone asked for access just before opening this app, and its answer takes a moment
+            // to arrive.
+            guard await ensureWorkoutAccess(patience: .seconds(10)) else { return }
+            guard phase == .idle, session == nil else { return }
+            begin(Goal())
+            // phase only changes once the countdown task runs; a session means the start went through.
+            startedFromCompanion = session != nil
         }
     }
 
@@ -356,7 +435,8 @@ final class WorkoutManager: NSObject {
         }
     }
 
-    private func fail(_ message: String) {
+    private func fail(_ message: String, title: String = "Workout problem") {
+        workoutErrorTitle = title
         workoutError = message
         WKInterfaceDevice.current().play(.failure)
     }

@@ -20,7 +20,7 @@ struct StrideWatchApp: App {
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             WatchConnector.shared.retryPending()
-            workout.updateLocationAccess()
+            workout.updateAccess()
         }
     }
 }

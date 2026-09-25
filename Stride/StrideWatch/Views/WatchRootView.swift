@@ -7,7 +7,7 @@ struct WatchRootView: View {
 
     var body: some View {
         content
-            .alert("Workout problem", isPresented: errorAlert) {
+            .alert(workout.workoutErrorTitle, isPresented: errorAlert) {
                 Button("OK") {}
             } message: {
                 Text(workout.workoutError ?? "")

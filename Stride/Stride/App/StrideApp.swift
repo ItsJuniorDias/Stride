@@ -1,9 +1,12 @@
 import SwiftUI
 import SwiftData
+import HealthKit
+import UIKit
 import StrideKit
 
 @main
 struct StrideApp: App {
+    @UIApplicationDelegateAdaptor private var appDelegate: StrideAppDelegate
     @State private var tracker: RunTracker
     @State private var mirrored = MirroredWorkout.shared
     private let container: ModelContainer
@@ -30,5 +33,18 @@ struct StrideApp: App {
                 .environment(mirrored)
         }
         .modelContainer(container)
+    }
+}
+
+/// Stride on Apple Watch can hand Health's permission request to iPhone. Health then opens this app
+/// and calls this method; the sheet shown here answers for the Watch.
+final class StrideAppDelegate: NSObject, UIApplicationDelegate {
+    func applicationShouldRequestHealthAuthorization(_ application: UIApplication) {
+        guard HKHealthStore.isHealthDataAvailable() else { return }
+        let store = MirroredWorkout.shared.healthStore
+        Task {
+            // Shows the types the Watch asked for; throws only if the request itself failed.
+            try? await store.handleAuthorizationForExtension()
+        }
     }
 }
