@@ -18,10 +18,15 @@ struct RecordsSection: View {
         VStack(alignment: .leading, spacing: Space.x3) {
             SectionHeader(title: "Personal records", route: records.isEmpty ? nil : .records)
             if shown.isEmpty {
-                Text("Your fastest times and longest runs show up here after your first run.")
-                    .font(.subheadline)
-                    .foregroundStyle(.inkMuted)
-                    .raisedCard()
+                HStack(spacing: Space.x3) {
+                    Illustration(name: "recordsTrophy")
+                        .frame(width: 88, height: 88)
+                        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+                    Text("Your fastest times and longest runs show up here after your first run.")
+                        .font(.subheadline)
+                        .foregroundStyle(.inkMuted)
+                }
+                .raisedCard()
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(shown.enumerated()), id: \.element.id) { index, record in
@@ -150,11 +155,17 @@ struct RecordsEarnedCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.x3) {
-            Label(achievements.count == 1 ? "New personal record" : "\(achievements.count) new personal records",
-                  systemImage: "trophy.fill")
-                .font(.headline)
-                .foregroundStyle(.ink)
-                .symbolEffect(.bounce, value: achievements.count)
+            HStack(alignment: .center, spacing: Space.x3) {
+                Label(achievements.count == 1 ? "New personal record" : "\(achievements.count) new personal records",
+                      systemImage: "trophy.fill")
+                    .font(.headline)
+                    .foregroundStyle(.ink)
+                    .symbolEffect(.bounce, value: achievements.count)
+                Spacer(minLength: 0)
+                Illustration(name: "recordsTrophy")
+                    .frame(width: 64, height: 64)
+                    .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+            }
             ForEach(achievements) { achievement in
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 2) {

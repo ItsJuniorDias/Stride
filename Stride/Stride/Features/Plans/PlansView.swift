@@ -32,22 +32,29 @@ private struct PlanCard: View {
     let completed: Set<String>
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.x2) {
-            HStack {
-                Text(plan.name).font(.title3.bold()).foregroundStyle(.ink)
-                Spacer()
-                if isActive { StatusChip("Active", indicator: .success) }
+        VStack(alignment: .leading, spacing: 0) {
+            Illustration(name: plan.coverImage, contentMode: .fill)
+                .frame(height: 140)
+                .frame(maxWidth: .infinity)
+                .clipped()
+            VStack(alignment: .leading, spacing: Space.x2) {
+                HStack {
+                    Text(plan.name).font(.title3.bold()).foregroundStyle(.ink)
+                    Spacer()
+                    if isActive { StatusChip("Active", indicator: .success) }
+                }
+                Text(plan.level).metricLabelStyle()
+                Text(plan.summary).font(.subheadline).foregroundStyle(.inkMuted)
+                if isActive {
+                    PlanProgressBar(progress: plan.progress(completed: completed))
+                        .padding(.top, Space.x1)
+                }
             }
-            Text(plan.level).metricLabelStyle()
-            Text(plan.summary).font(.subheadline).foregroundStyle(.inkMuted)
-            if isActive {
-                PlanProgressBar(progress: plan.progress(completed: completed))
-                    .padding(.top, Space.x1)
-            }
+            .padding(Space.x4)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(Space.x4)
-        .background(Color.surfaceRaised, in: RoundedRectangle(cornerRadius: Radius.md))
+        .background(Color.surfaceRaised)
+        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
     }
 }
 
@@ -89,6 +96,11 @@ struct PlanDetailView: View {
         List {
             Section {
                 VStack(alignment: .leading, spacing: Space.x2) {
+                    Illustration(name: plan.coverImage, contentMode: .fill)
+                        .frame(height: 150)
+                        .frame(maxWidth: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+                        .padding(.bottom, Space.x1)
                     Text(plan.level).metricLabelStyle()
                     Text(plan.summary).font(.body).foregroundStyle(.ink)
                     if isActive {

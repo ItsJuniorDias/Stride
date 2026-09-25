@@ -1,0 +1,90 @@
+{
+  "style": "Flat editorial illustration for a modern running app. Geometric shapes, soft paper grain, gentle depth, confident composition. Limited palette only: a burnt orange (the brand color, used for the main accent), a deep cobalt blue (secondary), a warm off-white background, a soft light gray, and a near-black ink for small details. Friendly and optimistic, never cartoonish. Absolutely no text of any kind: no words, letters, numbers, color codes, signs, labels, logos or watermarks. Subject centered with generous empty margins so the image can sit behind or beside interface elements. Never draw real brands or trademarks (no swoosh, three stripes or similar marks).",
+  "assets": [
+    {
+      "name": "plan-first-5k",
+      "aspect": "16:9",
+      "use": "Cover of the First 5K plan (PlansView, plan detail)",
+      "prompt": "A beginner runner jogging easily along a winding park path in soft morning light, trees and a small pond, calm and encouraging."
+    },
+    {
+      "name": "plan-10k",
+      "aspect": "16:9",
+      "use": "Cover of the 10K plan",
+      "prompt": "A runner with a strong stride on a riverside path, a distant city skyline, the path curving ahead, energetic but controlled."
+    },
+    {
+      "name": "plan-half-marathon",
+      "aspect": "16:9",
+      "use": "Cover of the Half Marathon plan",
+      "prompt": "A determined runner crossing a long bridge at golden hour, the road stretching far into the distance, sense of endurance and achievement."
+    },
+    {
+      "name": "empty-activities",
+      "aspect": "1:1",
+      "use": "Activities empty state (no runs yet)",
+      "prompt": "A pair of plain running shoes waiting by an open door with morning light spilling in, ready to go out. The shoes are unbranded: plain panels and laces only, no logos, no swoosh or check marks, no stripes, no brand marks of any kind."
+    },
+    {
+      "name": "empty-friends",
+      "aspect": "1:1",
+      "use": "Friends empty state (Run with friends)",
+      "prompt": "Two runners side by side giving each other a high five on a park path, joyful and supportive."
+    },
+    {
+      "name": "empty-shoes",
+      "aspect": "1:1",
+      "use": "Shoes empty state (Track your shoes)",
+      "prompt": "A single plain running shoe resting on a track lane, a measuring tape loosely curled around it. The shoe is unbranded: plain panels and laces only, no logos, no swoosh or check marks, no stripes, no brand marks of any kind."
+    },
+    {
+      "name": "records-trophy",
+      "aspect": "1:1",
+      "use": "Personal records empty state and record celebrations",
+      "prompt": "A stylized trophy cup with a subtle running-track loop around it and small confetti shapes."
+    },
+    {
+      "name": "streak-flame",
+      "aspect": "1:1",
+      "use": "Streaks card accent",
+      "prompt": "One simple, symmetrical flame, drawn as a single bold shape. Inside it, the curved lanes of a running track sweep upward to form the flame's tongues. Nothing else in the scene: no background shapes, no loose lines, dots or sparks."
+    },
+    {
+      "name": "challenge-mountain",
+      "aspect": "1:1",
+      "use": "Challenges empty state (Set yourself a challenge)",
+      "prompt": "A runner at the base of a mountain with a zigzag trail climbing to a small flag at the summit."
+    },
+    {
+      "name": "onboarding-welcome",
+      "aspect": "3:4",
+      "use": "Welcome / onboarding screen",
+      "prompt": "A runner mid-stride on an open road at sunrise with an Apple Watch-like smartwatch on the wrist, wide sky, sense of freedom."
+    },
+    {
+      "name": "watch-run",
+      "aspect": "1:1",
+      "use": "Start on Apple Watch promo",
+      "prompt": "Close-up of a runner's wrist wearing a sleek smartwatch with an abstract glowing ring on its screen, motion lines suggesting speed."
+    },
+    {
+      "name": "appstore-background",
+      "aspect": "9:16",
+      "use": "Background for App Store screenshots",
+      "prompt": "Abstract composition of curved running-track lanes sweeping diagonally across the frame, lots of calm empty space."
+    },
+    {
+      "name": "app-icon-concept",
+      "aspect": "1:1",
+      "use": "App icon exploration (refine before shipping)",
+      "prompt": "An app icon concept: a bold, simple mark of a stylized runner merged with a curved track lane, burnt orange on off-white, fills the whole square, no rounded corners, no border, no text."
+    },
+    {
+      "name": "app-icon-orange",
+      "aspect": "1:1",
+      "use": "The app icon (iPhone and Watch ship variant 1, center-cropped to 900 px so the orange reaches the corners, then resized to 1024). Use --reference Design/Images/app-icon-concept.png to keep the mark.",
+      "style": false,
+      "prompt": "An iOS app icon. A solid burnt orange background fills the entire square edge to edge, reaching all four corners: no rounded corners, no border, no frame, no outer shadow, no white or dark margin. Centered on it, one bold, simple mark in warm off-white: a stylized runner mid-stride bursting through a tilted oval running-track ring, with a thin deep cobalt blue offset shadow for depth. Flat vector look with a very subtle paper grain, crisp edges, and generous space around the mark so it reads at small sizes. No text, letters, numbers or logos."
+    }
+  ]
+}

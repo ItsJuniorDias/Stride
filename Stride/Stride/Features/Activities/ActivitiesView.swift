@@ -22,15 +22,17 @@ struct ActivitiesView: View {
         NavigationStack(path: $path) {
             Group {
                 if runs.isEmpty {
-                    ContentUnavailableView {
-                        Label("No runs yet", systemImage: "figure.run")
-                    } description: {
-                        Text("Your runs will show up here after you finish one.")
-                    } actions: {
-                        Button("Add a run manually") { addingRun = true }
-                            .buttonStyle(.strideSecondary)
-                            .fixedSize()
+                    ScrollView {
+                        IllustratedEmptyState(illustration: "emptyActivities", symbol: "figure.run", title: "No runs yet",
+                                              message: "Your runs will show up here after you finish one.") {
+                            Button("Add a run manually") { addingRun = true }
+                                .buttonStyle(.strideSecondary)
+                                .fixedSize()
+                                .padding(.top, Space.x2)
+                        }
+                        .padding(.top, Space.x6)
                     }
+                    .background(Color.surface)
                 } else {
                     List {
                         ForEach(months, id: \.month) { group in

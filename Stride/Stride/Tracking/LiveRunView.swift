@@ -263,6 +263,7 @@ private struct CountdownView: View {
     let number: Int
     let onSkip: () -> Void
     let onCancel: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: Space.x4) {
@@ -283,6 +284,16 @@ private struct CountdownView: View {
                 .buttonStyle(.strideSecondary)
         }
         .padding(Space.x4)
+        .background {
+            // Track lanes behind the count, blended into the page (light mode; too bright in dark).
+            if colorScheme == .light {
+                // Faint, so the count and "Get ready" keep full contrast.
+                Illustration(name: "appstoreBackground", contentMode: .fill)
+                    .blendMode(.multiply)
+                    .opacity(0.18)
+                    .ignoresSafeArea()
+            }
+        }
         .sensoryFeedback(.impact(weight: .heavy), trigger: number)
     }
 }

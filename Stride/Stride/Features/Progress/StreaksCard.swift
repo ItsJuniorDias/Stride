@@ -10,7 +10,15 @@ struct StreaksCard: View {
     var body: some View {
         let streaks = Streaks.summary(of: samples.map(\.date), now: now)
         VStack(alignment: .leading, spacing: Space.x3) {
-            Text("Streaks").font(.headline).foregroundStyle(.ink)
+            HStack(alignment: .center) {
+                Text("Streaks").font(.headline).foregroundStyle(.ink)
+                Spacer()
+                if streaks.currentWeeks > 0 {
+                    Illustration(name: "streakFlame")
+                        .frame(width: 36, height: 36)
+                        .clipShape(Circle())
+                }
+            }
             VStack(alignment: .leading, spacing: Space.x4) {
                 HStack(alignment: .top, spacing: Space.x4) {
                     MetricView("Weekly streak", value: "\(streaks.currentWeeks)", unit: streaks.currentWeeks == 1 ? "week" : "weeks", size: .medium)

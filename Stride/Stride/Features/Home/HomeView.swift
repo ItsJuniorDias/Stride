@@ -5,6 +5,7 @@ import StrideUI
 
 struct HomeView: View {
     @Binding var selectedTab: AppTab
+    @Environment(MirroredWorkout.self) private var mirrored
     @Query(sort: \Run.startDate, order: .reverse) private var runs: [Run]
     @AppStorage(StrideSettings.unitSystem) private var unit: UnitSystem = .metric
     @AppStorage(StrideSettings.weeklyGoal) private var weeklyGoal = 20.0
@@ -24,6 +25,9 @@ struct HomeView: View {
         NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: Space.x5) {
+                    if runs.isEmpty {
+                        welcomeCard
+                    }
                     weeklyGoalCard
 
                     monthStrip
@@ -32,6 +36,11 @@ struct HomeView: View {
                         .buttonStyle(.stridePrimary)
 
                     ActivePlanCard()
+
+                    // Stride on Apple Watch is installed but hasn't recorded a run yet.
+                    if mirrored.canStartOnWatch, !runs.contains(where: { $0.source == .watch }) {
+                        watchCard
+                    }
 
                     if let latest = runs.first {
                         VStack(alignment: .leading, spacing: Space.x3) {
@@ -62,6 +71,37 @@ struct HomeView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
             now = .now
         }
+    }
+
+    private var watchCard: some View {
+        HStack(spacing: Space.x3) {
+            Illustration(name: "watchRun", contentMode: .fill)
+                .frame(width: 96, height: 96)
+                .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+            VStack(alignment: .leading, spacing: Space.x1) {
+                Text("Run with Apple Watch").font(.headline).foregroundStyle(.ink)
+                Text("Open Stride on your watch, or tap Start on Watch in the Run tab. Heart rate and zones come along.")
+                    .font(.caption)
+                    .foregroundStyle(.inkMuted)
+            }
+            Spacer(minLength: 0)
+        }
+        .raisedCard()
+    }
+
+    /// Before the first run: what Stride is about, and the way in.
+    private var welcomeCard: some View {
+        VStack(alignment: .leading, spacing: Space.x3) {
+            Illustration(name: "onboardingWelcome", contentMode: .fill)
+                .frame(height: 220)
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+            Text("Your first run starts here").font(.title3.bold()).foregroundStyle(.ink)
+            Text("Track every run with GPS on iPhone or Apple Watch, follow a plan, and watch your weeks add up.")
+                .font(.subheadline)
+                .foregroundStyle(.inkMuted)
+        }
+        .raisedCard()
     }
 
     private var weeklyGoalCard: some View {
@@ -116,19 +156,26 @@ struct HomeView: View {
             .background(Color.surfaceRaised, in: RoundedRectangle(cornerRadius: Radius.md))
     }
 
+    /// A large title fits about 18 characters on the smallest iPhones, so "Good afternoon, Alexandre"
+    /// becomes "Hi, Alexandre", and a name too long even for that leaves just the time of day.
     private var greeting: String {
-        let name = userName.split(separator: " ").first.map(String.init)
         let base = switch Calendar.current.component(.hour, from: now) {
         case 5..<12: "Good morning"
         case 12..<18: "Good afternoon"
         default: "Good evening"
         }
-        return name.map { "\(base), \($0)" } ?? base
+        guard let name = userName.split(separator: " ").first.map(String.init) else { return base }
+        let maxLength = 18
+        let full = "\(base), \(name)"
+        if full.count <= maxLength { return full }
+        let short = "Hi, \(name)"
+        return short.count <= maxLength ? short : base
     }
 }
 
 #Preview {
     HomeView(selectedTab: .constant(.home))
         .environment(RunTracker())
+        .environment(MirroredWorkout.shared)
         .modelContainer(for: [Run.self, Shoe.self, Challenge.self], inMemory: true)
 }

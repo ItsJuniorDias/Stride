@@ -23,6 +23,10 @@ struct ChallengesSection: View {
             }
             if running.isEmpty {
                 VStack(alignment: .leading, spacing: Space.x3) {
+                    Illustration(name: "challengeMountain", contentMode: .fill)
+                        .frame(height: 150)
+                        .frame(maxWidth: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
                     Label("Set yourself a challenge", systemImage: "flag.checkered")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.ink)
@@ -143,15 +147,13 @@ struct ChallengesView: View {
         }
         return ScrollView {
             if challenges.isEmpty {
-                ContentUnavailableView {
-                    Label("No challenges yet", systemImage: "flag.checkered")
-                } description: {
-                    Text("Pick a suggested challenge or set your own target.")
-                } actions: {
+                IllustratedEmptyState(illustration: "challengeMountain", symbol: "flag.checkered", title: "No challenges yet",
+                                      message: "Pick a suggested challenge or set your own target.") {
                     Button("New challenge") { creating = true }
                         .buttonStyle(.stridePrimary)
+                        .padding(.top, Space.x2)
                 }
-                .padding(.top, Space.x7)
+                .padding(.top, Space.x5)
             } else {
                 VStack(alignment: .leading, spacing: Space.x5) {
                     section("Running", items([.active, .upcoming]).sorted { $0.endDate < $1.endDate }, statuses: statuses, now: now)

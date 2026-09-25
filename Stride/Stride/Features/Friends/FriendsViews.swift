@@ -17,20 +17,21 @@ struct FriendsSection: View {
             SectionHeader(title: "Friends", route: .friends)
             if friends.friendCodes.isEmpty {
                 NavigationLink(value: ProgressRoute.friends) {
-                    HStack(spacing: Space.x3) {
-                        Image(systemName: "person.2.fill")
-                            .font(.title3)
-                            .foregroundStyle(.lane)
-                            .frame(width: 44, height: 44)
-                            .background(Color.laneSoft, in: Circle())
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Run with friends").font(.subheadline.weight(.semibold)).foregroundStyle(.ink)
-                            Text("Swap codes, see each other's week and cheer each other on.")
-                                .font(.caption)
-                                .foregroundStyle(.inkMuted)
+                    VStack(alignment: .leading, spacing: Space.x3) {
+                        Illustration(name: "emptyFriends", contentMode: .fill)
+                            .frame(height: 150)
+                            .frame(maxWidth: .infinity)
+                            .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+                        HStack(spacing: Space.x3) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Run with friends").font(.subheadline.weight(.semibold)).foregroundStyle(.ink)
+                                Text("Swap codes, see each other's week and cheer each other on.")
+                                    .font(.caption)
+                                    .foregroundStyle(.inkMuted)
+                            }
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.inkMuted)
                         }
-                        Spacer(minLength: 0)
-                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.inkMuted)
                     }
                     .raisedCard()
                     .contentShape(Rectangle())
@@ -162,6 +163,14 @@ struct FriendsView: View {
                         .font(.subheadline)
                         .foregroundStyle(.warning)
                         .raisedCard()
+                }
+                if friends.friendCodes.isEmpty {
+                    IllustratedEmptyState(illustration: "emptyFriends", symbol: "person.2.fill", title: "Run with friends",
+                                          message: "Add friends with their code, or send them yours. You'll see each other's week and can cheer each other on.",
+                                          imageHeight: 200) {
+                        EmptyView()
+                    }
+                    .raisedCard(padding: 0)
                 }
                 if let notice = friends.notice {
                     Label(notice, systemImage: "info.circle")

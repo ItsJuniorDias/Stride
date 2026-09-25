@@ -15,6 +15,12 @@ struct ShoesSection: View {
             SectionHeader(title: "Shoes", route: .shoes)
             if shoes.isEmpty {
                 VStack(alignment: .leading, spacing: Space.x3) {
+                    if Illustration.exists("emptyShoes") {
+                        Illustration(name: "emptyShoes", contentMode: .fill)
+                            .frame(height: 140)
+                            .frame(maxWidth: .infinity)
+                            .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+                    }
                     Label("Track your shoes", systemImage: "shoe.fill")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.ink)
@@ -137,13 +143,11 @@ struct ShoesView: View {
         let retired = shoes.filter(\.isRetired)
         List {
             if shoes.isEmpty {
-                ContentUnavailableView {
-                    Label("No shoes yet", systemImage: "shoe.fill")
-                } description: {
-                    Text("Add your running shoes to see how far each pair has gone.")
-                } actions: {
+                IllustratedEmptyState(illustration: "emptyShoes", symbol: "shoe.fill", title: "No shoes yet",
+                                      message: "Add your running shoes to see how far each pair has gone.") {
                     Button("Add shoe") { adding = true }
                         .buttonStyle(.stridePrimary)
+                        .padding(.top, Space.x2)
                 }
                 .listRowBackground(Color.clear)
             }
