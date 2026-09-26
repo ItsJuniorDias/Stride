@@ -16,6 +16,8 @@ struct RootView: View {
     @AppStorage(StrideSettings.hasOnboarded) private var hasOnboarded = false
     /// Stride Pro, offered once right after the welcome pages.
     @State private var showingPaywall = false
+    /// The welcome pages were finished (not just pushed aside by a run), so Pro is offered next.
+    @State private var offerProAfterOnboarding = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -61,22 +63,35 @@ struct RootView: View {
         // The welcome pages on a device's first launch, then Stride Pro (closable) for runners without it.
         .background {
             Color.clear
-                .fullScreenCover(isPresented: Binding(get: { !hasOnboarded && !tracker.isPresented }, set: { _ in }),
-                                 onDismiss: { if !ProStore.shared.isPro { showingPaywall = true } }) {
-                    OnboardingView { hasOnboarded = true }
-                        .interactiveDismissDisabled()
+                .fullScreenCover(isPresented: Binding(get: { !hasOnboarded && !tracker.isPresented && !mirrored.isPresented },
+                                                      set: { _ in }),
+                                 onDismiss: {
+                                     guard offerProAfterOnboarding else { return }
+                                     offerProAfterOnboarding = false
+                                     if !ProStore.shared.isPro { showingPaywall = true }
+                                 }) {
+                    OnboardingView {
+                        offerProAfterOnboarding = true
+                        hasOnboarded = true
+                    }
+                    .interactiveDismissDisabled()
                 }
         }
         .background {
+            // Waits for any run on screen to close first.
             Color.clear
-                .sheet(isPresented: $showingPaywall) { ProPaywallView(feature: .general) }
+                .sheet(isPresented: Binding(get: { showingPaywall && !tracker.isPresented && !mirrored.isPresented },
+                                            set: { showingPaywall = $0 })) {
+                    ProPaywallView(feature: .general)
+                }
         }
         .task { tracker.restoreIfNeeded() }
         .task { await RunMaintenance.backfillBestEfforts(in: context) }
         .task { Vitals.removeOrphans(in: context) }
         .background { IntegrationSync() }
         // Waits until no run is on screen: a sheet can't show over the run's full-screen cover.
-        .sheet(item: Binding(get: { tracker.isPresented || mirrored.isPresented ? nil : FriendsService.shared.pendingInvite },
+        .sheet(item: Binding(get: { tracker.isPresented || mirrored.isPresented || !hasOnboarded || showingPaywall
+                                    ? nil : FriendsService.shared.pendingInvite },
                              set: { FriendsService.shared.pendingInvite = $0 })) { invite in
             AddFriendView(initialCode: invite.code)
         }

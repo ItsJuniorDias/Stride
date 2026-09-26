@@ -17,7 +17,8 @@ struct OnboardingView: View {
     /// Which way the last move went, so pages slide in from the matching side.
     @State private var movingForward = true
     @State private var location = LocationPermission()
-    @State private var healthAsked = false
+    /// What Health answered, once asked.
+    @State private var healthResult: String?
     @FocusState private var nameFocused: Bool
 
     enum Page: Int, CaseIterable {
@@ -162,7 +163,7 @@ struct OnboardingView: View {
     }
 
     private var healthState: PermissionRow.State {
-        healthAsked || healthSave ? .done("Connected") : .ask("Connect")
+        healthResult.map { .done($0) } ?? .ask("Connect")
     }
 
     private func connectHealth() {
@@ -170,8 +171,8 @@ struct OnboardingView: View {
         // Runs from now on; earlier ones only when asked in Profile.
         UserDefaults.standard.set(Date.now, forKey: StrideSettings.healthSaveSince)
         Task {
-            _ = await HealthSync.shared.requestAuthorization()
-            healthAsked = true
+            // Like Profile, saving stays on after a denial; Profile then explains how to allow it.
+            healthResult = await HealthSync.shared.requestAuthorization() ? "Connected" : "Off"
         }
     }
 }

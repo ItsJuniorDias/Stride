@@ -90,7 +90,7 @@
           ],
           "productID" : "alexandrejunior.Stride.pro.annual",
           "recurringSubscriptionPeriod" : "P1Y",
-          "referenceName" : "Stride Pro Annual",
+          "referenceName" : "Annual",
           "subscriptionGroupID" : "21500001",
           "type" : "RecurringSubscription",
           "winbackOffers" : [
@@ -129,7 +129,7 @@
           ],
           "productID" : "alexandrejunior.Stride.pro.monthly",
           "recurringSubscriptionPeriod" : "P1M",
-          "referenceName" : "Stride Pro Monthly",
+          "referenceName" : "Monthly",
           "subscriptionGroupID" : "21500001",
           "type" : "RecurringSubscription",
           "winbackOffers" : [

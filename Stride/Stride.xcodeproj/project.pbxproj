@@ -79,6 +79,7 @@
 		5D1DE0000000000000000101 /* StrideWatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = StrideWatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		8372DA5B3065F68700F97B11 /* Stride.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Stride.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8372DA6D3065F74500F97B11 /* StrideWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StrideWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		83A65E4F3067355100FD2EDD /* Stride.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Stride.storekit; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -144,6 +145,7 @@
 		8372DA523065F68700F97B11 = {
 			isa = PBXGroup;
 			children = (
+				83A65E4F3067355100FD2EDD /* Stride.storekit */,
 				8372DA5D3065F68700F97B11 /* Stride */,
 				8372DA6E3065F74500F97B11 /* StrideWatch */,
 				5D1DE0000000000000000104 /* StrideShared */,

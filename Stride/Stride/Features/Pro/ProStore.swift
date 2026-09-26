@@ -24,8 +24,10 @@ final class ProStore {
     /// What Profile says about the subscription.
     private(set) var summary = ProSummary(state: .free, detail: ProSummary.freeDetail, canManage: false)
 
-    /// The subscription group, read from the products: a local StoreKit file uses its own id.
-    var groupID: String? { products.first?.subscription?.subscriptionGroupID }
+    /// The subscription group, from the current subscription or the products: a local StoreKit file
+    /// uses its own id, so it's never hard-coded.
+    var groupID: String? { entitlementGroupID ?? products.first?.subscription?.subscriptionGroupID }
+    private(set) var entitlementGroupID: String?
 
     @ObservationIgnored private var updates: Task<Void, Never>?
     /// DEBUG launch argument `-StrideProOverride pro|free`, for screenshots and testing.
@@ -69,13 +71,19 @@ final class ProStore {
     /// Re-reads the entitlement. Nothing fires when a subscription simply expires, so this also runs
     /// whenever the app becomes active.
     func refresh() async {
+        // A launch without a connection left them empty: try again.
+        if products.isEmpty { await loadProducts() }
         var active: Transaction?
         for await result in Transaction.currentEntitlements {
             // Unverified transactions don't count; refunded and revoked ones carry a revocation date.
             guard case .verified(let transaction) = result, Self.productIDs.contains(transaction.productID),
                   transaction.revocationDate == nil else { continue }
-            active = transaction
+            // The runner's own purchase wins over one shared by their family: it's the one they manage.
+            if active == nil || (transaction.ownershipType == .purchased && active?.ownershipType != .purchased) {
+                active = transaction
+            }
         }
+        entitlementGroupID = active?.subscriptionGroupID
         if override == nil {
             isPro = active != nil
             UserDefaults.standard.set(isPro, forKey: StrideSettings.proLastKnown)
@@ -162,6 +170,22 @@ struct ProSummary: Equatable {
 /// Prices and terms in the app's words, from the App Store's localized prices, so the prices set in
 /// App Store Connect (Brazil included) read right without code changes.
 enum ProPricing {
+    /// The price billed, the most prominent line: "7 days free, then US$ 39.99 a year", "US$ 6.99 a month".
+    static func price(_ product: Product, trial: Product.SubscriptionOffer?) -> String {
+        let recurring = "\(product.displayPrice) \(per(product))"
+        guard let trial else { return recurring }
+        return "\(length(trial.period)) free, then \(recurring)"
+    }
+
+    /// The line under the button: what's charged, when, and how to stop it.
+    static func terms(for product: Product, trial: Product.SubscriptionOffer?, now: Date = .now) -> String {
+        let recurring = "\(product.displayPrice) \(per(product))"
+        if let trial, let end = Calendar.current.date(byAdding: component(trial.period.unit), value: trial.period.value, to: now) {
+            return "Free until \(shortDate(end)), then \(recurring). Renews automatically; cancel anytime in Settings."
+        }
+        return "\(recurring). Renews automatically until you cancel in Settings."
+    }
+
     /// "US$ 3.33" a month for the yearly plan; nil for monthly.
     static func perMonth(_ product: Product) -> String? {
         guard product.subscription?.subscriptionPeriod.unit == .year else { return nil }
@@ -176,6 +200,26 @@ enum ProPricing {
         guard twelveMonths > 0 else { return nil }
         let percent = Int(((1 - NSDecimalNumber(decimal: product.price).doubleValue / twelveMonths) * 100).rounded(.down))
         return percent >= 10 ? percent : nil
+    }
+
+    private static func per(_ product: Product) -> String {
+        switch product.subscription?.subscriptionPeriod.unit {
+        case .year: "a year"
+        case .month: "a month"
+        case .week: "a week"
+        case .day: "a day"
+        default: ""
+        }
+    }
+
+    private static func component(_ unit: Product.SubscriptionPeriod.Unit) -> Calendar.Component {
+        switch unit {
+        case .day: .day
+        case .week: .weekOfYear
+        case .month: .month
+        case .year: .year
+        @unknown default: .day
+        }
     }
 
     /// "7 days", "1 month": a trial's length the way people say it.
