@@ -17,7 +17,7 @@ struct RunDetailView: View {
     @State private var heartRateSeries: [SeriesPoint] = []
     /// Meters along the route under the finger, shared by all charts.
     @State private var chartSelection: Double?
-    @State private var shareImage: Image?
+    @State private var sharing = false
     /// Heart rate, kept apart from the run on this device.
     @State private var vitals: RunVitals?
     @State private var editing = false
@@ -95,12 +95,8 @@ struct RunDetailView: View {
         .navigationTitle(run.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if let shareImage {
-                ToolbarItem(placement: .primaryAction) {
-                    ShareLink(item: shareImage, preview: SharePreview(run.title, image: shareImage)) {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                    }
-                }
+            ToolbarItem(placement: .primaryAction) {
+                Button("Share", systemImage: "square.and.arrow.up") { sharing = true }
             }
             ToolbarItem(placement: .primaryAction) {
                 Menu {
@@ -111,8 +107,11 @@ struct RunDetailView: View {
                 }
             }
         }
-        .sheet(isPresented: $editing, onDismiss: renderShareImage) {
+        .sheet(isPresented: $editing) {
             EditRunView(run: run)
+        }
+        .sheet(isPresented: $sharing) {
+            ShareRunSheet(share: ShareRun(run: run, unit: unit))
         }
         .confirmationDialog("Delete this run?", isPresented: $confirmingDelete, titleVisibility: .visible) {
             Button("Delete Run", role: .destructive) {
@@ -128,20 +127,6 @@ struct RunDetailView: View {
             }
         }
         .task(id: unit) { await load() }
-        .onChange(of: shareInputs) { renderShareImage() }
-    }
-
-    /// Everything the share card shows, so the image is redrawn whenever any of it changes.
-    private struct ShareInputs: Equatable {
-        let title: String
-        let date: Date
-        let distance: Double
-        let duration: TimeInterval
-        let elevationGain: Double
-    }
-
-    private var shareInputs: ShareInputs {
-        ShareInputs(title: run.title, date: run.startDate, distance: run.distance, duration: run.duration, elevationGain: run.elevationGain)
     }
 
     /// One distance axis for all charts, so a selection lines up across them.
@@ -191,11 +176,5 @@ struct RunDetailView: View {
         paceSeries = data.pace
         elevationSeries = data.elevation
         heartRateSeries = data.heartRate
-        renderShareImage()
-    }
-
-    private func renderShareImage() {
-        shareImage = ShareCardView(title: run.title, date: run.startDate, distance: run.distance, duration: run.duration,
-                                   elevationGain: run.elevationGain, coordinates: run.preview, unit: unit).image()
     }
 }

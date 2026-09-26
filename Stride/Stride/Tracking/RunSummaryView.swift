@@ -14,6 +14,7 @@ struct RunSummaryView: View {
     @State private var route: [RoutePoint] = []
     @State private var splits: [Split] = []
     @State private var confirmingDiscard = false
+    @State private var sharing = false
 
     var body: some View {
         ScrollView {
@@ -25,9 +26,15 @@ struct RunSummaryView: View {
                         .symbolEffect(.bounce, value: splits.count)
                         .padding(.bottom, Space.x1)
                         .accessibilityHidden(true)
-                    Text("Run complete")
-                        .font(.largeTitle.bold())
-                        .foregroundStyle(.ink)
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Run complete")
+                            .font(.largeTitle.bold())
+                            .foregroundStyle(.ink)
+                        Spacer(minLength: Space.x2)
+                        Button("Share", systemImage: "square.and.arrow.up") { sharing = true }
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.lane)
+                    }
                     Text(run.startDate.formatted(date: .complete, time: .shortened))
                         .font(.subheadline)
                         .foregroundStyle(.inkMuted)
@@ -88,6 +95,9 @@ struct RunSummaryView: View {
                 .padding(.top, -Space.x5)
                 .ignoresSafeArea(edges: .bottom)
             }
+        }
+        .sheet(isPresented: $sharing) {
+            ShareRunSheet(share: ShareRun(run: run, unit: unit))
         }
         .confirmationDialog("Discard this run?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
             Button("Discard Run", role: .destructive) {

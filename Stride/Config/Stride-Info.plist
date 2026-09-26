@@ -15,6 +15,12 @@
 		<key>RunTracking</key>
 		<string>Precise location is needed to measure your distance and pace accurately during this run.</string>
 	</dict>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Stride saves the run images you choose to share to your photo library.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>instagram-stories</string>
+	</array>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>CFBundleURLTypes</key>

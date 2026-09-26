@@ -69,27 +69,28 @@ nonisolated struct RouteShape: Shape {
     let coordinates: [Coordinate]
 
     func path(in rect: CGRect) -> Path {
-        guard coordinates.count > 1 else { return Path() }
+        let points = Self.points(coordinates, in: rect)
+        guard points.count > 1 else { return Path() }
+        var path = Path()
+        path.addLines(points)
+        return path
+    }
+
+    /// The route fitted into `rect` with its aspect ratio kept, north up. Also used to place the
+    /// start and finish marks on share images.
+    static func points(_ coordinates: [Coordinate], in rect: CGRect) -> [CGPoint] {
+        guard coordinates.count > 1 else { return [] }
         let midLatitude = coordinates.map(\.latitude).reduce(0, +) / Double(coordinates.count)
         let lonScale = cos(midLatitude * .pi / 180)
         let xs = coordinates.map { $0.longitude * lonScale }
         let ys = coordinates.map(\.latitude)
-        guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() else { return Path() }
+        guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() else { return [] }
         let width = max(maxX - minX, 1e-9), height = max(maxY - minY, 1e-9)
         let scale = min(rect.width / width, rect.height / height)
         let originX = rect.midX - width * scale / 2
         let originY = rect.midY - height * scale / 2
-
-        var path = Path()
-        for index in coordinates.indices {
-            let point = CGPoint(x: originX + (xs[index] - minX) * scale,
-                                y: originY + (maxY - ys[index]) * scale)
-            if index == 0 {
-                path.move(to: point)
-            } else {
-                path.addLine(to: point)
-            }
+        return coordinates.indices.map { index in
+            CGPoint(x: originX + (xs[index] - minX) * scale, y: originY + (maxY - ys[index]) * scale)
         }
-        return path
     }
 }

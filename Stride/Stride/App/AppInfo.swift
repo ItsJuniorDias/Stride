@@ -8,6 +8,9 @@ enum AppInfo {
     static let termsURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
     /// Set before release: the same URL as the App Store listing's Privacy Policy field.
     static let privacyURL = URL(string: "https://example.com/stride/privacy")!
+    /// Set before release: the Meta (Facebook) App ID Instagram asks for when opening its Stories
+    /// composer (developers.facebook.com › Create app). Sharing still opens without it on most versions.
+    static let facebookAppID = ""
 
     /// A prefilled email reporting a friend's name.
     static func reportURL(name: String, code: String) -> URL? {
