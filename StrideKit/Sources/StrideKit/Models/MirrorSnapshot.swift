@@ -29,6 +29,8 @@ public struct MirrorSnapshot: Codable, Sendable {
     public var goalDistance: Double?
     /// Seconds, for time goals.
     public var goalDuration: TimeInterval?
+    /// Where an interval workout is, so iPhone shows the same step as the Watch.
+    public var workoutProgress: MirrorWorkoutProgress?
 
     public init(
         sentAt: Date = .now,
@@ -46,7 +48,8 @@ public struct MirrorSnapshot: Codable, Sendable {
         routeEpochBase: Int = 0,
         goalName: String? = nil,
         goalDistance: Double? = nil,
-        goalDuration: TimeInterval? = nil
+        goalDuration: TimeInterval? = nil,
+        workoutProgress: MirrorWorkoutProgress? = nil
     ) {
         self.sentAt = sentAt
         self.elapsed = elapsed
@@ -64,6 +67,7 @@ public struct MirrorSnapshot: Codable, Sendable {
         self.goalName = goalName
         self.goalDistance = goalDistance
         self.goalDuration = goalDuration
+        self.workoutProgress = workoutProgress
     }
 
     /// Moving time now, extrapolated from the snapshot while running.
@@ -75,6 +79,51 @@ public struct MirrorSnapshot: Codable, Sendable {
         Dictionary(uniqueKeysWithValues: zoneSeconds.compactMap { key, value in
             HeartRateZone(rawValue: key).map { ($0, value) }
         })
+    }
+}
+
+/// An interval workout's position on the Watch, carried by each snapshot. The whole workout travels
+/// along (a couple of KB) because a run started on the Watch is one iPhone has never seen.
+public struct MirrorWorkoutProgress: Codable, Hashable, Sendable {
+    public var workout: Workout
+    /// The current step; `workout.steps.count` once every step is done.
+    public var stepIndex: Int
+    /// Left in the current step when the snapshot was sent.
+    public var remaining: WorkoutStep.Goal?
+
+    public init(workout: Workout, stepIndex: Int, remaining: WorkoutStep.Goal?) {
+        self.workout = workout
+        self.stepIndex = stepIndex
+        self.remaining = remaining
+    }
+
+    public var isFinished: Bool { stepIndex >= workout.steps.count }
+
+    public var currentStep: WorkoutStep? {
+        workout.steps.indices.contains(stepIndex) ? workout.steps[stepIndex] : nil
+    }
+
+    public var nextStep: WorkoutStep? {
+        workout.steps.indices.contains(stepIndex + 1) ? workout.steps[stepIndex + 1] : nil
+    }
+
+    /// Left in the current step `seconds` of moving time after the snapshot: a time step keeps
+    /// counting down between snapshots, a distance step waits for the next one.
+    public func remaining(after seconds: TimeInterval) -> WorkoutStep.Goal? {
+        guard case .time(let left)? = remaining else { return remaining }
+        return .time(max(left - max(seconds, 0), 0))
+    }
+
+    /// 0…1 through the current step, for a value from ``remaining(after:)``.
+    public func progress(remaining: WorkoutStep.Goal?) -> Double {
+        guard let step = currentStep else { return 1 }
+        let amounts: (total: Double, left: Double)
+        switch (step.goal, remaining) {
+        case (.time(let total), .time(let left)?): amounts = (total, left)
+        case (.distance(let total), .distance(let left)?): amounts = (total, left)
+        default: return 0
+        }
+        return amounts.total > 0 ? min(max(1 - amounts.left / amounts.total, 0), 1) : 1
     }
 }
 
@@ -108,12 +157,33 @@ public struct MirrorGoal: Codable, Hashable, Sendable {
     /// Seconds, for time runs.
     public var duration: TimeInterval?
     public var name: String?
+    /// The steps to follow, for interval runs. Optional, so goals from older app versions still decode.
+    public var workout: Workout?
 
-    public init(type: RunType, distance: Double? = nil, duration: TimeInterval? = nil, name: String? = nil) {
+    public init(type: RunType, distance: Double? = nil, duration: TimeInterval? = nil, name: String? = nil,
+                workout: Workout? = nil) {
         self.type = type
         self.distance = distance
         self.duration = duration
         self.name = name
+        self.workout = workout
+    }
+}
+
+/// What iPhone keeps on the Watch through the application context, beside units and max heart rate.
+public enum WatchContext {
+    /// Bool: this Apple Account has Stride Pro on iPhone. The Watch sells nothing; it only unlocks.
+    public static let proActive = "proActive"
+    /// Data: the workouts the Watch can start by itself, as JSON from ``encode(_:)``.
+    public static let workouts = "workouts"
+
+    public static func encode(_ workouts: [Workout]) -> Data? {
+        try? JSONEncoder().encode(workouts)
+    }
+
+    /// Nil for anything that isn't a list of workouts, so a bad payload never replaces a good one.
+    public static func decodeWorkouts(_ data: Data) -> [Workout]? {
+        try? JSONDecoder().decode([Workout].self, from: data)
     }
 }
 

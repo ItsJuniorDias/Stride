@@ -10,11 +10,15 @@ struct RunSetupView: View {
     @Environment(MirroredWorkout.self) private var mirrored
     @Environment(\.openURL) private var openURL
     @Query(filter: #Predicate<Shoe> { !$0.isRetired }, sort: \Shoe.createdAt) private var shoes: [Shoe]
+    /// The runner's own interval workouts, after the presets.
+    @Query(sort: \CustomWorkout.createdAt) private var customWorkouts: [CustomWorkout]
     @AppStorage(StrideSettings.unitSystem) private var unit: UnitSystem = .metric
     @AppStorage(StrideSettings.autoPause) private var autoPause = true
     /// Seconds per kilometer, 0 when off. Remembered between runs.
     @AppStorage(StrideSettings.targetPace) private var targetPace = 0.0
-    @State private var intervalPresetID = IntervalPresets.all[0].id
+    /// The interval workout picked: a preset's id or a custom workout's ``CustomWorkout/workoutID``.
+    @State private var intervalWorkoutID = IntervalPresets.all[0].id
+    @State private var editingWorkout: WorkoutEditorTarget?
 
     @State private var runType: RunType = .free
     @State private var targetMeters: Double = 5_000
@@ -38,8 +42,14 @@ struct RunSetupView: View {
         Binding(get: { shoeID }, set: { defaultShoeRaw = $0?.uuidString ?? "" })
     }
 
-    private var intervalPreset: Workout {
-        IntervalPresets.all.first { $0.id == intervalPresetID } ?? IntervalPresets.all[0]
+    /// The workout picked under Intervals: a preset, or one of the runner's own. The first preset when
+    /// the picked one was deleted (here, in Profile or on another device).
+    private var intervalWorkout: Workout {
+        if let preset = IntervalPresets.all.first(where: { $0.id == intervalWorkoutID }) { return preset }
+        if let custom = customWorkouts.first(where: { $0.workoutID == intervalWorkoutID && $0.isRunnable }) {
+            return custom.workout(unit: unit)
+        }
+        return IntervalPresets.all[0]
     }
 
     /// Target paces offered, every 5 s, in seconds per the runner's unit:
@@ -98,6 +108,10 @@ struct RunSetupView: View {
             Text(mirrored.error ?? "")
         }
         .proPaywall($upsell)
+        .sheet(item: $editingWorkout) { target in
+            // A saved workout is the one picked, ready to start.
+            CustomWorkoutEditor(workout: target.workout) { intervalWorkoutID = $0.workoutID }
+        }
         // Pro ended while Intervals was picked: back to a free run.
         .onChange(of: isPro) { _, isPro in
             if !isPro, runType == .intervals { runType = .free }
@@ -181,26 +195,59 @@ struct RunSetupView: View {
                 }
             }
         case .intervals:
-            VStack(alignment: .leading, spacing: Space.x2) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: Space.x2) {
-                        ForEach(IntervalPresets.all) { preset in
-                            SelectableChip(preset.name, isSelected: intervalPresetID == preset.id) {
-                                intervalPresetID = preset.id
-                            }
-                        }
-                    }
-                }
-                Text(intervalPreset.detail)
-                    .font(.caption)
-                    .foregroundStyle(.inkMuted)
-            }
+            intervalsPicker
         case .free:
             Text("Run at your own pace. Stride records everything.")
                 .font(.subheadline)
                 .foregroundStyle(.inkMuted)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    /// The presets, then the runner's own workouts, then a way to build one (Stride Pro).
+    private var intervalsPicker: some View {
+        let selected = intervalWorkout
+        let own = customWorkouts.filter(\.isRunnable)
+        let selectedOwn = own.first { $0.workoutID == selected.id }
+        return VStack(alignment: .leading, spacing: Space.x2) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Space.x2) {
+                    ForEach(IntervalPresets.all) { preset in
+                        SelectableChip(preset.name, isSelected: selected.id == preset.id) {
+                            intervalWorkoutID = preset.id
+                        }
+                    }
+                    ForEach(own) { custom in
+                        SelectableChip(custom.displayName, isSelected: selected.id == custom.workoutID) {
+                            intervalWorkoutID = custom.workoutID
+                        }
+                        .contextMenu {
+                            Button("Edit", systemImage: "pencil") { edit(custom) }
+                        }
+                    }
+                    BuildWorkoutChip(isLocked: !isPro) {
+                        if isPro { editingWorkout = .new } else { upsell = .workouts }
+                    }
+                }
+            }
+            HStack(alignment: .firstTextBaseline, spacing: Space.x2) {
+                Text(selected.detail)
+                    .font(.caption)
+                    .foregroundStyle(.inkMuted)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if let selectedOwn {
+                    Button("Edit") { edit(selectedOwn) }
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.lane)
+                        .accessibilityLabel("Edit \(selectedOwn.displayName)")
+                }
+            }
+        }
+    }
+
+    /// Changing a workout is Stride Pro, like building one.
+    private func edit(_ workout: CustomWorkout) {
+        if isPro { editingWorkout = .edit(workout) } else { upsell = .workouts }
     }
 
     /// Shoe and auto-pause as settings rows, grouped like a small form.
@@ -335,7 +382,9 @@ struct RunSetupView: View {
         case .time:
             return MirrorGoal(type: .time, duration: TimeInterval(targetMinutes * 60), name: "\(targetMinutes) min")
         case .intervals:
-            return isPro ? MirrorGoal(type: .intervals, name: intervalPreset.name) : nil
+            // The workout an iPhone run would follow (none without Pro); the Watch runs its steps.
+            guard let workout = configuration.workout else { return nil }
+            return MirrorGoal(type: .intervals, name: workout.name, workout: workout)
         case .free:
             return nil
         }
@@ -347,9 +396,34 @@ struct RunSetupView: View {
         switch runType {
         case .distance: configuration.targetDistance = selectedMeters
         case .time: configuration.targetDuration = TimeInterval(targetMinutes * 60)
-        case .intervals: configuration.workout = isPro ? intervalPreset : nil
+        case .intervals: configuration.workout = isPro ? intervalWorkout : nil
         case .free: break
         }
         return configuration
+    }
+}
+
+/// The last chip under Intervals: builds a workout of the runner's own. Dashed, as it adds rather than picks.
+private struct BuildWorkoutChip: View {
+    let isLocked: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: Space.x2) {
+                Image(systemName: "plus")
+                    .font(.subheadline.weight(.bold))
+                Text("Build your own")
+                if isLocked { TagBadge("Pro") }
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.ink)
+            .padding(.horizontal, Space.x4)
+            .frame(minHeight: 36)
+            .background(Capsule().strokeBorder(Color.lineStrong, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3])))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(isLocked ? "Needs Stride Pro" : "Opens the workout builder")
     }
 }

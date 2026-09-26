@@ -14,7 +14,7 @@ enum CloudStore {
     /// CloudKit couldn't be set up; the runs are then local, as before).
     private(set) static var syncsWithICloud = false
 
-    static let syncedModels: [any PersistentModel.Type] = [Run.self, Shoe.self, Challenge.self]
+    static let syncedModels: [any PersistentModel.Type] = [Run.self, Shoe.self, Challenge.self, CustomWorkout.self]
 
     static func makeContainer() -> ModelContainer {
         #if DEBUG

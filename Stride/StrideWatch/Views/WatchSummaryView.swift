@@ -10,9 +10,21 @@ struct WatchSummaryView: View {
         ScrollView {
             if let run = workout.summary {
                 VStack(alignment: .leading, spacing: Space.x3) {
-                    Label("Run complete", systemImage: "checkmark.seal.fill")
-                        .font(.headline)
-                        .foregroundStyle(.success)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Label("Run complete", systemImage: "checkmark.seal.fill")
+                            .font(.headline)
+                            .foregroundStyle(.success)
+                        if let name = run.workoutName {
+                            Text(name)
+                                .font(.footnote.weight(.semibold))
+                                .lineLimit(2)
+                        }
+                        if let cursor = workout.cursor {
+                            Text(stepsDone(cursor))
+                                .font(.caption)
+                                .foregroundStyle(.inkMuted)
+                        }
+                    }
 
                     metric("Distance", RunFormat.distance(run.distance, unit: unit), unit.distanceSymbol)
                     metric("Time", RunFormat.duration(run.duration), nil)
@@ -44,6 +56,14 @@ struct WatchSummaryView: View {
                 .scenePadding()
             }
         }
+    }
+
+    /// "All 8 intervals done", or how far the run got when it ended early.
+    private func stepsDone(_ cursor: WorkoutCursor) -> String {
+        let total = cursor.workout.runStepCount
+        guard !cursor.isFinished else { return total > 1 ? "All \(total) intervals done" : "Workout complete" }
+        let done = cursor.workout.steps.prefix(cursor.index).filter { $0.kind == .run }.count
+        return "\(done) of \(total) \(total == 1 ? "interval" : "intervals") done"
     }
 
     private func metric(_ label: String, _ value: String, _ unit: String?) -> some View {

@@ -2,11 +2,20 @@ import SwiftUI
 import StrideKit
 import StrideUI
 
-/// Start list: a free run first, then distance and time goals.
+/// Start list: a free run first, then distance and time goals, then interval workouts (Pro).
 struct WatchHomeView: View {
     @Environment(WorkoutManager.self) private var workout
     /// The week and friends, from iPhone.
     @State private var snapshot = WidgetStore.load()
+    /// Stride Pro as iPhone last reported it. Pro is bought and restored on iPhone only.
+    @AppStorage(WatchContext.proActive) private var isPro = false
+    /// The workouts iPhone sent; the interval presets until it has.
+    @AppStorage(WatchContext.workouts) private var workoutsData = Data()
+    @AppStorage(WatchVoice.enabledKey) private var speaksSteps = true
+
+    private var library: [Workout] {
+        WatchContext.decodeWorkouts(workoutsData) ?? IntervalPresets.all
+    }
 
     private let goals: [(title: String, systemImage: String, goal: WorkoutManager.Goal)] = [
         ("5 km", "ruler", .init(type: .distance, distance: 5_000, name: "5 km")),
@@ -76,6 +85,8 @@ struct WatchHomeView: View {
                     }
                 }
                 .disabled(workout.isCheckingAccess)
+
+                intervals
             }
             .navigationTitle("Stride")
         }
@@ -84,6 +95,47 @@ struct WatchHomeView: View {
         .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
             let latest = WidgetStore.load()
             if latest != snapshot { snapshot = latest }
+        }
+    }
+
+    /// Everyone sees the workouts; only Pro starts them. There's nothing to buy on the Watch.
+    private var intervals: some View {
+        Section {
+            if !isPro {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Get Stride Pro on iPhone")
+                        .font(.headline)
+                    Text("Steps, haptics and voice cues on your wrist.")
+                        .font(.caption)
+                        .foregroundStyle(.inkMuted)
+                }
+                .padding(.vertical, Space.x1)
+            }
+            ForEach(library) { item in
+                Button {
+                    Task { await workout.start(.init(type: .intervals, name: item.name, workout: item)) }
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(item.name)
+                            .lineLimit(1)
+                        if !item.detail.isEmpty {
+                            Text(item.detail)
+                                .font(.caption2)
+                                .foregroundStyle(.inkMuted)
+                                .lineLimit(2)
+                        }
+                    }
+                }
+                .disabled(!isPro || workout.isCheckingAccess)
+            }
+            if isPro {
+                Toggle("Spoken steps", isOn: $speaksSteps)
+            }
+        } header: {
+            HStack(spacing: Space.x1) {
+                Text("Intervals")
+                if !isPro { TagBadge("Pro") }
+            }
         }
     }
 }

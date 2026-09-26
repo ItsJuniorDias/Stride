@@ -57,14 +57,21 @@ extension WatchConnector: WCSessionDelegate {
         Task { @MainActor in self.flushOutbox() }
     }
 
-    /// Settings pushed from iPhone (units, max heart rate).
+    /// Settings pushed from iPhone (units, max heart rate), Stride Pro and the workouts to offer.
+    /// Kept in UserDefaults so the start list reads them synchronously, even with iPhone away.
     nonisolated func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
         let unit = applicationContext[StrideSettings.unitSystem] as? String
         let maxHeartRate = applicationContext[StrideSettings.maxHeartRate] as? Double
         let snapshot = (applicationContext[WidgetStore.contextKey] as? Data).flatMap(WidgetStore.decode)
+        let isPro = applicationContext[WatchContext.proActive] as? Bool
+        let workouts = (applicationContext[WatchContext.workouts] as? Data).flatMap { data in
+            WatchContext.decodeWorkouts(data) == nil ? nil : data
+        }
         Task { @MainActor in
             if let unit { UserDefaults.standard.set(unit, forKey: StrideSettings.unitSystem) }
             if let maxHeartRate, maxHeartRate > 0 { UserDefaults.standard.set(maxHeartRate, forKey: StrideSettings.maxHeartRate) }
+            if let isPro { UserDefaults.standard.set(isPro, forKey: WatchContext.proActive) }
+            if let workouts { UserDefaults.standard.set(workouts, forKey: WatchContext.workouts) }
             if let snapshot { self.received(snapshot) }
         }
     }

@@ -3,7 +3,8 @@ import SwiftData
 import StrideKit
 import StrideUI
 
-/// Totals by week, month and year, streaks, personal records, challenges and shoes.
+/// Totals by week, month and year, training load, streaks, race predictions, personal records,
+/// challenges and shoes.
 struct ProgressDashboardView: View {
     @Query(sort: \Run.startDate, order: .reverse) private var runs: [Run]
     @Environment(\.scenePhase) private var scenePhase
@@ -16,11 +17,14 @@ struct ProgressDashboardView: View {
             ScrollView {
                 let samples = runs.map(\.sample)
                 // Decoded once per change here, not in every section's body.
-                let records = PersonalRecords.best(of: runs.map(\.recordEntry))
+                let entries = runs.map(\.recordEntry)
+                let records = PersonalRecords.best(of: entries)
                 VStack(alignment: .leading, spacing: Space.x5) {
                     PeriodStatsCard(samples: samples, firstRun: runs.last?.startDate, now: now)
+                    TrainingLoadCard(samples: samples, now: now)
                     StreaksCard(samples: samples, now: now)
                     FriendsSection(samples: samples, now: now)
+                    RacePredictorCard(entries: entries, now: now)
                     RecordsSection(records: records, runs: runs)
                     ChallengesSection(samples: samples, now: now)
                     ShoesSection()

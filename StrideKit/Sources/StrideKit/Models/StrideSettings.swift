@@ -22,6 +22,12 @@ public enum StrideSettings {
     public static let activePlanID = "activePlanID"
     /// Completed training-plan session ids, comma separated.
     public static let completedPlanSessions = "completedPlanSessions"
+    /// The week the active plan restarted from after a break (``PlanRepeat/rawValue``), empty for none.
+    /// Not synced: it never changes what's marked done, so each device can go its own way.
+    public static let planRepeat = "planRepeat"
+    /// The last run's date (seconds since 1970) when "Not now" hid the suggestion to restart from an
+    /// earlier week, so it stays hidden until the next break. Not synced.
+    public static let planRepeatDismissed = "planRepeatDismissed"
     /// The shoe new runs use (iPhone, Watch and manual), as a UUID string; empty for none.
     public static let defaultShoeID = "defaultShoeID"
     /// The Progress tab's period: week, month, year or all.

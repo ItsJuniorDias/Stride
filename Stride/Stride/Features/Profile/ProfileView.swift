@@ -71,6 +71,13 @@ struct ProfileView: View {
                 Section("Training") {
                     NavigationLink("Friends", value: ProgressRoute.friends)
                     NavigationLink("Training plans", value: PlanRoute.list)
+                    NavigationLink(value: PlanRoute.workouts) {
+                        HStack(spacing: Space.x2) {
+                            Text("Your workouts")
+                            Spacer(minLength: 0)
+                            if !pro.isPro { TagBadge("Pro") }
+                        }
+                    }
                     NavigationLink("Challenges", value: ProgressRoute.challenges)
                     NavigationLink("Shoes", value: ProgressRoute.shoes)
                 }

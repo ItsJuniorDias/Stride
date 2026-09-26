@@ -99,9 +99,15 @@ struct MirroredRunView: View {
                     StatusChip("Zone \(zone.rawValue) · \(zone.name)", indicator: zone.color)
                         .padding(.top, Space.x4)
                 }
-                goalBar(distance: distance, elapsed: elapsed)
-                    .padding(.horizontal, Space.x4)
-                    .padding(.top, Space.x5)
+                Group {
+                    if let progress = snapshot?.workoutProgress {
+                        stepCard(progress, elapsed: elapsed)
+                    } else {
+                        goalBar(distance: distance, elapsed: elapsed)
+                    }
+                }
+                .padding(.horizontal, Space.x4)
+                .padding(.top, Space.x5)
                 Spacer(minLength: Space.x5)
             }
         }
@@ -179,6 +185,18 @@ struct MirroredRunView: View {
                     .monospacedDigit()
                     .foregroundStyle(.inkMuted)
             }
+        }
+    }
+
+    /// The interval step the Watch is on, as the iPhone's own runs show it. A timed step counts down
+    /// between snapshots with the clock; a distance step moves with the next snapshot.
+    @ViewBuilder private func stepCard(_ progress: MirrorWorkoutProgress, elapsed: TimeInterval) -> some View {
+        if let step = progress.currentStep {
+            let remaining = progress.remaining(after: elapsed - (snapshot?.elapsed ?? elapsed))
+            WorkoutStepCard(step: step, workout: progress.workout, next: progress.nextStep,
+                            remaining: remaining, progress: progress.progress(remaining: remaining), unit: unit)
+        } else {
+            StatusChip("Workout complete · keep going or finish", indicator: .success)
         }
     }
 

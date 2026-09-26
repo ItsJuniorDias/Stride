@@ -7,6 +7,8 @@ import StrideKit
 enum PlanRoute: Hashable {
     case list
     case plan(String)
+    /// The runner's own interval workouts.
+    case workouts
 }
 
 extension View {
@@ -20,6 +22,8 @@ extension View {
                 if let plan = TrainingPlan.plan(id: id) {
                     PlanDetailView(plan: plan)
                 }
+            case .workouts:
+                CustomWorkoutsView()
             }
         }
     }
@@ -27,12 +31,17 @@ extension View {
 
 /// Starting a plan session from Home or a plan screen, with the same location checks as the Run tab.
 enum PlanSessionLauncher {
-    /// A plan session follows its own steps; the Run tab's remembered target pace doesn't apply.
-    static func configuration(for session: Workout, autoPause: Bool) -> RunTracker.Configuration {
-        var configuration = RunTracker.Configuration(type: session.steps.count > 1 ? .intervals : .free,
-                                                     workoutName: session.name, autoPause: autoPause)
-        configuration.workout = session
-        configuration.planSessionID = session.id
+    /// A plan session follows its own steps; the Run tab's remembered target pace doesn't apply. With
+    /// Stride Pro, `paces` (the runner's own, when there are enough runs) put a target on tempo and
+    /// interval steps for the coach's pace alerts; without Pro the session runs exactly as written.
+    static func configuration(for session: Workout, in plan: TrainingPlan, paces: TrainingPaces?,
+                              autoPause: Bool) -> RunTracker.Configuration {
+        var workout = session
+        if ProStore.shared.isPro, let paces { workout = plan.personalized(session, paces: paces) }
+        var configuration = RunTracker.Configuration(type: workout.steps.count > 1 ? .intervals : .free,
+                                                     workoutName: workout.name, autoPause: autoPause)
+        configuration.workout = workout
+        configuration.planSessionID = workout.id
         return configuration
     }
 

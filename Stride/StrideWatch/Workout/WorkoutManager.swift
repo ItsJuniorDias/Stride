@@ -29,6 +29,8 @@ final class WorkoutManager: NSObject {
         /// Seconds, for time runs.
         var duration: TimeInterval?
         var name: String?
+        /// The steps to follow, for interval runs (Pro).
+        var workout: Workout?
     }
 
     // MARK: State read by views
@@ -61,6 +63,10 @@ final class WorkoutManager: NSObject {
     /// A start is waiting for Health access; the start list disables its buttons meanwhile.
     private(set) var isCheckingAccess = false
     private(set) var locationDenied = false
+    /// Where an interval run is in its workout; nil for other runs. Kept after the end for the summary.
+    private(set) var cursor: WorkoutCursor?
+    /// Against the current run step's target pace; nil when it has none.
+    private(set) var paceStatus: PaceGuard.Status?
 
     let healthStore = HKHealthStore()
 
@@ -89,6 +95,16 @@ final class WorkoutManager: NSObject {
         if let target = goal.distance, target > 0 { return distance / target }
         if let target = goal.duration, target > 0 { return elapsedTime(at: date) / target }
         return nil
+    }
+
+    /// Seconds or meters left in the current workout step.
+    func stepRemaining(at date: Date = .now) -> WorkoutStep.Goal? {
+        cursor?.remaining(elapsed: stepClock(at: date), distance: stepDistance)
+    }
+
+    /// 0…1 through the current workout step.
+    func stepProgress(at date: Date = .now) -> Double {
+        cursor?.stepProgress(elapsed: stepClock(at: date), distance: stepDistance) ?? 0
     }
 
     func clearWorkoutError() {
@@ -126,6 +142,15 @@ final class WorkoutManager: NSObject {
     @ObservationIgnored private var startedFromCompanion = false
     /// The Health and location request in flight; every caller shares it.
     @ObservationIgnored private var authorizationRequest: Task<Void, Never>?
+    /// Moves the workout's steps along while an interval run is under way.
+    @ObservationIgnored private var stepTask: Task<Void, Never>?
+    /// Moving time and distance the steps last saw. Never lower: after a recovery the builder reads
+    /// 0 m until its first statistics, which would otherwise restart a distance step.
+    @ObservationIgnored private var stepClockFloor: TimeInterval = 0
+    @ObservationIgnored private var stepDistanceFloor: Double = 0
+    @ObservationIgnored private var paceGuard: PaceGuard?
+    @ObservationIgnored private var paceGuardStepID: Int?
+    @ObservationIgnored private let voice = WatchVoice()
 
     // MARK: Authorization
 
@@ -236,6 +261,9 @@ final class WorkoutManager: NSObject {
     /// The countdown, then the workout. Callers have checked Health access.
     private func begin(_ goal: Goal) {
         self.goal = goal
+        cursor = goal.workout.map { WorkoutCursor(workout: $0) }
+        stepClockFloor = 0
+        stepDistanceFloor = 0
         splitUnit = UnitSystem(rawValue: UserDefaults.standard.string(forKey: StrideSettings.unitSystem) ?? "") ?? .metric
         do {
             try prepareSession()
@@ -292,6 +320,13 @@ final class WorkoutManager: NSObject {
         mirrorTask = nil
         remirrorTask?.cancel()
         remirrorTask = nil
+        stepTask?.cancel()
+        stepTask = nil
+        cursor = nil
+        stepClockFloor = 0
+        stepDistanceFloor = 0
+        clearPace()
+        voice.stop()
         sendFailures = 0
         sentCoordinateCount = 0
         routeEpoch = UUID()
@@ -362,6 +397,7 @@ final class WorkoutManager: NSObject {
         }
         guard self.session === session else { return }
         WKInterfaceDevice.current().play(.start)
+        startFollowingWorkout()
         startMirroring(session)
     }
 
@@ -397,6 +433,11 @@ final class WorkoutManager: NSObject {
         countdownTask?.cancel()
         stopLocationUpdates()
         accumulateZoneTime(until: end)
+        // The steps as of the end, for the summary; nothing more is spoken.
+        advanceWorkout(announce: false, at: end)
+        stepTask?.cancel()
+        stepTask = nil
+        clearPace()
 
         try? await builder.endCollection(at: end)
         let workout = try? await builder.finishWorkout()
@@ -471,15 +512,22 @@ final class WorkoutManager: NSObject {
         }
         startLocationUpdates()
         startMirroring(session)
+        // An interval run picks up its steps where it is now, without repeating what was said.
+        advanceWorkout(announce: false)
+        startStepClock()
     }
 
-    /// Route, zones and goal on disk, so a recovered workout keeps what it had collected.
+    /// Route, zones, goal and workout steps on disk, so a recovered workout keeps what it had collected.
     private struct Journal: Codable {
         var goal: Goal
         var startDate: Date?
         var route: [RoutePoint]
         var zoneSeconds: [Int: TimeInterval]
         var segment: Int
+        /// Interval runs: the step reached and what the steps last saw. Optional, so older journals decode.
+        var cursor: WorkoutCursor?
+        var stepClock: TimeInterval?
+        var stepDistance: Double?
     }
 
     private var journalURL: URL {
@@ -491,7 +539,9 @@ final class WorkoutManager: NSObject {
         lastJournalWrite = .now
         let journal = Journal(goal: goal, startDate: startDate, route: route,
                               zoneSeconds: Dictionary(uniqueKeysWithValues: zoneSeconds.map { ($0.key.rawValue, $0.value) }),
-                              segment: segment)
+                              segment: segment, cursor: cursor,
+                              stepClock: cursor == nil ? nil : stepClockFloor,
+                              stepDistance: cursor == nil ? nil : stepDistanceFloor)
         try? JSONEncoder().encode(journal).write(to: journalURL, options: .atomic)
     }
 
@@ -499,6 +549,9 @@ final class WorkoutManager: NSObject {
         guard let data = try? Data(contentsOf: journalURL),
               let journal = try? JSONDecoder().decode(Journal.self, from: data) else { return }
         goal = journal.goal
+        cursor = journal.cursor ?? journal.goal.workout.map { WorkoutCursor(workout: $0) }
+        stepClockFloor = journal.stepClock ?? 0
+        stepDistanceFloor = journal.stepDistance ?? 0
         startDate = journal.startDate
         route = journal.route
         segment = journal.segment + 1
@@ -585,6 +638,98 @@ final class WorkoutManager: NSObject {
         zoneSeconds[zone, default: 0] += max(date.timeIntervalSince(last), 0)
     }
 
+    // MARK: Workout steps
+
+    /// The steps' clock: the builder's moving time, so a pause stops the step too (the Watch has no
+    /// auto-pause). Never lower than what the steps already saw.
+    private func stepClock(at date: Date) -> TimeInterval {
+        max(elapsedTime(at: date), stepClockFloor)
+    }
+
+    private var stepDistance: Double {
+        max(distance, stepDistanceFloor)
+    }
+
+    /// Once the run is under way: the workout and its first step are spoken and the steps start moving.
+    private func startFollowingWorkout() {
+        guard let cursor, startDate != nil, stepTask == nil else { return }
+        voice.speak(CoachScript.start(workout: cursor.workout))
+        if let step = cursor.currentStep {
+            voice.speak(CoachScript.stepStarted(step, in: cursor.workout, unit: splitUnit))
+        }
+        startStepClock()
+    }
+
+    /// Checks the steps twice a second, so a timed step ends on time.
+    private func startStepClock() {
+        guard cursor != nil, stepTask == nil else { return }
+        stepTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(500))
+                guard let self, !Task.isCancelled else { return }
+                guard self.phase == .running || self.phase == .paused, !self.isEnding else { continue }
+                self.advanceWorkout()
+                self.updatePaceAlert()
+            }
+        }
+    }
+
+    /// Moves past every step whose goal is met. A step change is felt (start for a run step, stop for
+    /// an easy one) and spoken; after a burst (a recovery) only the step the runner is in now is.
+    private func advanceWorkout(announce: Bool = true, at date: Date = .now) {
+        guard var cursor, startDate != nil else { return }
+        let clock = stepClock(at: date)
+        let meters = stepDistance
+        stepClockFloor = clock
+        stepDistanceFloor = meters
+        let events = cursor.advance(elapsed: clock, distance: meters)
+        guard let last = events.last else { return }
+        self.cursor = cursor
+        // The next statistics write the step to the journal right away.
+        lastJournalWrite = .distantPast
+        guard announce else { return }
+        switch last {
+        case .stepStarted(let step):
+            WKInterfaceDevice.current().play(step.kind == .run ? .start : .stop)
+            voice.speak(CoachScript.stepStarted(step, in: cursor.workout, unit: splitUnit))
+        case .workoutCompleted:
+            WKInterfaceDevice.current().play(.success)
+            voice.speak(CoachScript.workoutCompleted)
+        }
+        // iPhone shows the new step now rather than at the next snapshot.
+        sendSnapshot()
+    }
+
+    /// Run steps with a target pace: once the pace has been off for a while, a tap on the wrist
+    /// (up to speed up, down to ease off) and the coach's line. Quiet otherwise.
+    private func updatePaceAlert(at now: Date = .now) {
+        guard phase == .running, let step = cursor?.currentStep, step.kind == .run,
+              let target = step.targetPace.map({ $0 * splitUnit.metersPerUnit / 1_000 }) else {
+            clearPace()
+            return
+        }
+        if paceGuard?.target != target || paceGuardStepID != step.id {
+            paceGuard = PaceGuard(target: target)
+            paceGuardStepID = step.id
+        }
+        if let alert = paceGuard?.evaluate(currentPace: currentPace(unit: splitUnit, at: now), at: now) {
+            switch alert {
+            case .tooSlow: WKInterfaceDevice.current().play(.directionUp)
+            case .tooFast: WKInterfaceDevice.current().play(.directionDown)
+            case .onPace: WKInterfaceDevice.current().play(.click)
+            }
+            voice.speak(CoachScript.pace(alert, unit: splitUnit))
+        }
+        if paceStatus != paceGuard?.status { paceStatus = paceGuard?.status }
+    }
+
+    /// A fresh guard after every pause and step, so a stale off-pace window can't fire.
+    private func clearPace() {
+        paceGuard = nil
+        paceGuardStepID = nil
+        if paceStatus != nil { paceStatus = nil }
+    }
+
     // MARK: Mirroring to iPhone
 
     /// Shows the workout live on iPhone. Without a reachable iPhone this fails quietly;
@@ -624,7 +769,11 @@ final class WorkoutManager: NSObject {
             routeEpochBase: routeEpochBase,
             goalName: goal.name,
             goalDistance: goal.distance,
-            goalDuration: goal.duration
+            goalDuration: goal.duration,
+            workoutProgress: cursor.map { cursor in
+                MirrorWorkoutProgress(workout: cursor.workout, stepIndex: cursor.index,
+                                      remaining: cursor.remaining(elapsed: stepClock(at: .now), distance: stepDistance))
+            }
         )
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         Task { [weak self] in
@@ -655,7 +804,8 @@ final class WorkoutManager: NSObject {
     }
 
     /// The goal picked on iPhone for a run started with "Start on Watch". Only replaces a free run
-    /// the Watch started for that request, never a goal the runner picked on the Watch.
+    /// the Watch started for that request, never a goal the runner picked on the Watch. An intervals
+    /// goal brings its workout (iPhone only sends one with Pro); its steps count from the run's start.
     private func applyCompanionGoal(_ companionGoal: MirrorGoal) {
         guard startedFromCompanion, goal.type == .free else { return }
         switch phase {
@@ -663,8 +813,13 @@ final class WorkoutManager: NSObject {
         default: return
         }
         goal = Goal(type: companionGoal.type, distance: companionGoal.distance,
-                    duration: companionGoal.duration, name: companionGoal.name)
+                    duration: companionGoal.duration, name: companionGoal.name, workout: companionGoal.workout)
         goalReached = false
+        if let workout = companionGoal.workout {
+            cursor = WorkoutCursor(workout: workout)
+            // During the countdown this waits for the activity to start; beginWorkout() calls it again.
+            startFollowingWorkout()
+        }
         lastJournalWrite = .distantPast
         sendSnapshot()
     }
