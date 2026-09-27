@@ -10,3 +10,7 @@ build/
 Tools/imagegen/.env
 # Generated originals (large PNGs); the app ships the JPEGs in Assets.xcassets
 Design/Images/
+
+# App Store screenshots: render.py rebuilds these
+Marketing/AppStore/.build/
+Marketing/AppStore/out/
