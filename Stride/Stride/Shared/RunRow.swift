@@ -2,59 +2,105 @@ import SwiftUI
 import StrideKit
 import StrideUI
 
+/// A run in a list: the route in a small square, the title with where it was recorded, the date,
+/// then distance, time and pace. Activities, Home's latest run, and the shoe and challenge screens.
+/// Content only: the container pads it and draws the card.
 struct RunRow: View {
     let run: Run
     let unit: UnitSystem
+    /// A trailing chevron, where the row opens the run and nothing else draws one.
+    var showsChevron = false
+    /// A dot where the route starts, as on Home's latest run.
+    var marksStart = false
 
     var body: some View {
         HStack(spacing: Space.x3) {
-            RouteThumbnail(run: run)
+            RouteThumbnail(run: run, marksStart: marksStart)
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: Space.x1) {
+                HStack(spacing: 6) {
                     Text(run.title)
-                        .font(.headline)
+                        .font(.body.weight(.semibold))
                         .foregroundStyle(.ink)
-                    if run.source == .watch {
+                        .lineLimit(1)
+                    if run.isManual {
+                        SoftBadge("Manual", tone: .muted)
+                    } else if run.source == .watch {
                         Image(systemName: "applewatch")
-                            .font(.caption)
+                            .font(.footnote.weight(.semibold))
                             .foregroundStyle(.inkMuted)
-                            .accessibilityLabel("Recorded on Apple Watch")
                     }
                 }
-                Text(run.startDate.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute()))
-                    .font(.subheadline)
+                Text(run.startDate.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute()))
+                    .font(.footnote.weight(.medium))
                     .foregroundStyle(.inkMuted)
+                    .lineLimit(1)
                 HStack(spacing: Space.x3) {
-                    Text("\(RunFormat.distance(run.distance, unit: unit)) \(unit.distanceSymbol)")
+                    Text("\(RunFormat.distance(run.distance, unit: unit, fractionDigits: 1)) \(unit.distanceSymbol)")
                         .fontWeight(.semibold)
+                        .foregroundStyle(.ink)
                     Text(RunFormat.duration(run.duration))
                     Text("\(RunFormat.pace(run.averagePace(in: unit))) \(unit.paceSymbol)")
                 }
                 .font(.subheadline)
                 .monospacedDigit()
-                .foregroundStyle(.ink)
+                .foregroundStyle(.inkMuted)
+                .lineLimit(1)
+                .padding(.top, 2)
             }
-            Spacer(minLength: 0)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if showsChevron {
+                DisclosureChevron()
+            }
         }
-        .padding(.vertical, Space.x1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spokenSummary)
+    }
+
+    /// "Morning Run, recorded on Apple Watch, Thursday 24 September at 06:40, 5 kilometers,
+    /// 28 minutes 44 seconds, 5 minutes 45 seconds per kilometer."
+    private var spokenSummary: String {
+        var parts = [run.title]
+        if run.isManual {
+            parts.append("added by hand")
+        } else if run.source == .watch {
+            parts.append("recorded on Apple Watch")
+        }
+        parts.append(run.startDate.formatted(.dateTime.weekday(.wide).day().month(.wide).hour().minute()))
+        parts.append(CoachScript.spokenDistance(run.distance, unit: unit))
+        parts.append(CoachScript.spokenDuration(run.duration))
+        if let pace = run.averagePace(in: unit) {
+            parts.append(CoachScript.spokenPace(pace, unit: unit))
+        }
+        return parts.joined(separator: ", ")
     }
 }
 
-/// The route drawn as a line in a small square, or an icon for runs without GPS.
+/// The route drawn as a line in a small sunken square, or an icon for runs without GPS.
 struct RouteThumbnail: View {
     let run: Run
     var size: CGFloat = 56
+    /// A `success` dot where the route starts.
+    var marksStart = false
 
     var body: some View {
         let coordinates = run.preview
         ZStack {
             RoundedRectangle(cornerRadius: Radius.sm).fill(Color.surfaceSunken)
             if coordinates.count > 1 {
-                RouteShape(coordinates: coordinates)
-                    .stroke(Color.track, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
-                    .padding(Space.x2)
+                GeometryReader { geo in
+                    RouteShape(coordinates: coordinates)
+                        .stroke(Color.track, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                    if marksStart, let start = RouteShape.points(coordinates, in: CGRect(origin: .zero, size: geo.size)).first {
+                        Circle()
+                            .fill(Color.success)
+                            .frame(width: 5, height: 5)
+                            .position(start)
+                    }
+                }
+                .padding(Space.x2)
             } else {
                 Image(systemName: run.isManual ? "square.and.pencil" : "figure.run")
+                    .font(.system(size: 20, weight: .medium))
                     .foregroundStyle(.inkMuted)
             }
         }

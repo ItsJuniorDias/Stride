@@ -5,6 +5,8 @@ import StrideUI
 /// Screens reachable from Progress and Profile.
 enum ProgressRoute: Hashable {
     case records, challenges, shoes, friends
+    /// All five training paces, from the race predictions card.
+    case trainingPaces
 }
 
 extension View {
@@ -16,6 +18,7 @@ extension View {
             case .challenges: ChallengesView()
             case .shoes: ShoesView()
             case .friends: FriendsView()
+            case .trainingPaces: TrainingPacesView()
             }
         }
         .navigationDestination(for: Shoe.self) { ShoeDetailView(shoe: $0) }
@@ -23,21 +26,32 @@ extension View {
     }
 }
 
-/// A section title with an optional "See all" link.
+/// A section title with an optional "See all" link, in the style of ``SectionHeading``.
 struct SectionHeader: View {
     let title: String
     var route: ProgressRoute?
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(title).font(.headline).foregroundStyle(.ink)
-            Spacer()
+        SectionHeading(title) {
             if let route {
-                NavigationLink("See all", value: route)
-                    .font(.subheadline.weight(.semibold))
+                NavigationLink(value: route) { LinkLabel("See all") }
+                    .buttonStyle(.strideLink)
+                    .padding(.vertical, -11)
             }
         }
         .accessibilityElement(children: .contain)
+    }
+}
+
+/// "See all" in a card heading, kept to the heading's height so the tap target doesn't push the card open.
+struct SeeAllLink: View {
+    let route: ProgressRoute
+    var title = "See all"
+
+    var body: some View {
+        NavigationLink(value: route) { LinkLabel(title) }
+            .buttonStyle(.strideLink)
+            .padding(.vertical, -11)
     }
 }
 

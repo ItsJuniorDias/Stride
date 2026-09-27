@@ -37,18 +37,32 @@ struct LiveRouteMap: View {
 
     var body: some View {
         Map(position: $position) {
+            // A dark casing under the brand line keeps the route readable on any map tile.
             ForEach(stretches) { stretch in
                 MapPolyline(coordinates: stretch.coordinates)
-                    .stroke(Color.track, style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
+                    .stroke(Color.surface, style: StrokeStyle(lineWidth: 9, lineCap: .round, lineJoin: .round))
+                MapPolyline(coordinates: stretch.coordinates)
+                    .stroke(Color.track, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+            }
+            if let start = stretches.first?.coordinates.first {
+                Annotation("Start", coordinate: start) {
+                    Circle()
+                        .fill(Color.success)
+                        .frame(width: 10, height: 10)
+                        .overlay(Circle().stroke(Color.surface, lineWidth: 2))
+                }
+                .annotationTitles(.hidden)
             }
             if followsUser {
                 UserAnnotation()
             } else if let last = stretches.last?.coordinates.last {
                 Annotation("Runner", coordinate: last) {
-                    Circle()
-                        .fill(Color.track)
-                        .frame(width: 16, height: 16)
-                        .overlay(Circle().stroke(.white, lineWidth: 3))
+                    // White ring on purpose (not ink), so it stays light in light mode too.
+                    ZStack {
+                        Circle().fill(Color.lane.opacity(0.18)).frame(width: 36, height: 36)
+                        Circle().fill(Color.white).frame(width: 17, height: 17)
+                        Circle().fill(Color.lane).frame(width: 12, height: 12)
+                    }
                 }
                 .annotationTitles(.hidden)
             }

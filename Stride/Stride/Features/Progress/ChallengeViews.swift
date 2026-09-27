@@ -4,54 +4,9 @@ import Charts
 import StrideKit
 import StrideUI
 
-/// Progress: challenges still running, or a way to start one.
-struct ChallengesSection: View {
-    let samples: [RunSample]
-    let now: Date
-    @Query(sort: \Challenge.endDate) private var challenges: [Challenge]
-    @State private var creating = false
-
-    var body: some View {
-        let running = challenges.filter { now < $0.endDate }.prefix(3)
-        VStack(alignment: .leading, spacing: Space.x3) {
-            SectionHeader(title: "Challenges", route: challenges.isEmpty ? nil : .challenges)
-            ForEach(running) { challenge in
-                NavigationLink(value: challenge) {
-                    ChallengeCard(challenge: challenge, status: challenge.status(samples: samples, now: now), now: now)
-                }
-                .buttonStyle(.plain)
-            }
-            if running.isEmpty {
-                VStack(alignment: .leading, spacing: Space.x3) {
-                    Illustration(name: "challengeMountain", contentMode: .fill)
-                        .frame(height: 150)
-                        .frame(maxWidth: .infinity)
-                        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
-                    Label("Set yourself a challenge", systemImage: "flag.checkered")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.ink)
-                    Text("Run 100 km this month, climb a mountain's worth, or make your own.")
-                        .font(.subheadline)
-                        .foregroundStyle(.inkMuted)
-                    Button("New challenge") { creating = true }
-                        .buttonStyle(.strideSecondary)
-                }
-                .raisedCard()
-            } else {
-                Button {
-                    creating = true
-                } label: {
-                    Label("New challenge", systemImage: "plus")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: Dimension.hitMin)
-                }
-            }
-        }
-        .sheet(isPresented: $creating) { NewChallengeView() }
-    }
-}
-
-/// A challenge's progress, time left and whether the runner is on track.
+/// A challenge still running: its name, time left and dates beside the art, progress in large
+/// numbers, a bar with where an even pace would be by now, whether the runner is on track and
+/// what's left to do each day.
 struct ChallengeCard: View {
     let challenge: Challenge
     let status: ChallengeStatus
@@ -59,55 +14,111 @@ struct ChallengeCard: View {
     @AppStorage(StrideSettings.unitSystem) private var unit: UnitSystem = .metric
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.x3) {
+        let metric = challenge.metric
+        let completed = status.state == .completed
+        VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: Space.x3) {
-                ChallengeIcon(metric: challenge.metric, state: status.state)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(challenge.title).font(.headline).foregroundStyle(.ink)
-                    Text(ChallengeText.state(challenge, status: status, now: now))
-                        .font(.caption)
-                        .foregroundStyle(status.state == .completed ? Color.success : Color.inkMuted)
+                    Text(challenge.title)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.ink)
+                    HStack(spacing: 6) {
+                        Image(systemName: completed ? "checkmark" : "stopwatch")
+                            .font(.caption.weight(.semibold))
+                            .accessibilityHidden(true)
+                        Text(stateLine)
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(completed ? Color.success : Color.inkMuted)
                 }
-                Spacer(minLength: 0)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                ArtThumbnail(name: "challengeMountain", width: 56, height: 56)
             }
-            ProgressBar(progress: status.fraction)
-            HStack {
-                Text(challenge.metric.progressText(value: status.value, target: status.target, unit: unit))
-                    .font(.subheadline.weight(.medium))
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(metric.number(status.value, unit: unit, rounding: .down))
+                    .font(.system(size: 44, weight: .heavy).width(.expanded))
                     .monospacedDigit()
                     .foregroundStyle(.ink)
-                Spacer()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                Text("of \(metric.number(status.target, unit: unit)) \(metric.targetUnit(status.target, unit: unit))")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.inkMuted)
+                    .lineLimit(1)
+            }
+            .padding(.top, Space.x3)
+            .accessibilityElement(children: .combine)
+            TrackBar(progress: status.fraction, tint: completed ? .success : .lane, height: 10,
+                     marker: evenPace, markerLabel: showsEvenPaceLabel ? "Even pace" : nil)
+                .padding(.top, 14)
+                .accessibilityLabel(barDescription)
+            HStack(alignment: .firstTextBaseline, spacing: Space.x2) {
                 if let pace = ChallengeText.pace(challenge, status: status, unit: unit) {
                     Text(pace.text)
-                        .font(.caption.weight(.semibold))
+                        .font(.footnote.weight(.semibold))
                         .foregroundStyle(pace.onTrack ? Color.success : Color.inkMuted)
                 }
+                Spacer(minLength: 0)
+                if let toGo = ChallengeText.toGo(challenge, status: status, now: now, unit: unit, perDay: true) {
+                    Text(toGo)
+                        .font(.footnote)
+                        .foregroundStyle(.inkMuted)
+                        .multilineTextAlignment(.trailing)
+                }
             }
+            .padding(.top, 10)
         }
         .raisedCard()
-        .accessibilityElement(children: .combine)
+    }
+
+    /// "5 days left · Sep 13 – 30", "Completed Sep 24 · Sep 1 – 30", "Starts Oct 1".
+    private var stateLine: String {
+        let state = ChallengeText.state(challenge, status: status, now: now)
+        return status.state == .upcoming ? state : "\(state) · \(ChallengeText.dateRange(challenge))"
+    }
+
+    /// Where an even effort would be by now, as a fraction; nil at the very start or end, where it
+    /// would sit on the bar's edge.
+    private var evenPace: Double? {
+        guard status.state == .active, let expected = status.expected, status.target > 0 else { return nil }
+        let fraction = expected / status.target
+        return (0.02...0.98).contains(fraction) ? fraction : nil
+    }
+
+    /// The caption needs room either side of the tick.
+    private var showsEvenPaceLabel: Bool {
+        evenPace.map { (0.12...0.88).contains($0) } ?? false
+    }
+
+    /// "72.4 of 100 km. An even pace would be at 66.7 km by now."
+    private var barDescription: String {
+        let metric = challenge.metric
+        let progress = metric.progressText(value: status.value, target: status.target, unit: unit)
+        guard status.state == .active, let expected = status.expected else { return progress }
+        let shown = metric.shownValue(expected, unit: unit, rounding: .down)
+        return "\(progress). An even pace would be at \(metric.number(expected, unit: unit, rounding: .down)) \(metric.displayUnit(unit, count: shown)) by now."
     }
 }
 
+/// A challenge's symbol in a soft circle: data color while running, a check once completed, muted
+/// once ended.
 struct ChallengeIcon: View {
     let metric: ChallengeMetric
     let state: ChallengeStatus.State
+    var size: CGFloat = 40
 
     var body: some View {
-        Image(systemName: state == .completed ? "checkmark" : metric.symbol)
-            .font(.body.weight(.semibold))
-            .foregroundStyle(state == .completed ? Color.success : state == .missed ? Color.inkMuted : Color.lane)
-            .frame(width: 40, height: 40)
-            .background(state == .completed ? Color.success.opacity(0.15) : state == .missed ? Color.surfaceSunken : Color.laneSoft,
-                        in: Circle())
-            .accessibilityHidden(true)
+        switch state {
+        case .completed: IconBadge("checkmark", style: .tinted(.success), size: size)
+        case .missed: IconBadge(ChallengeText.symbol(metric), style: .muted, size: size)
+        case .active, .upcoming: IconBadge(ChallengeText.symbol(metric), style: .lane, size: size)
+        }
     }
 }
 
 enum ChallengeText {
     /// "6 days left", "Last day", "Starts Oct 1", "Completed Sep 12", "Ended Sep 30".
     static func state(_ challenge: Challenge, status: ChallengeStatus, now: Date) -> String {
-        let calendar = Calendar.current
         switch status.state {
         case .completed:
             return status.completedOn.map { "Completed \(shortDate($0))" } ?? "Completed"
@@ -116,7 +127,7 @@ enum ChallengeText {
         case .upcoming:
             return "Starts \(shortDate(challenge.startDate))"
         case .active:
-            let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: challenge.endDate).day ?? 0
+            let days = daysLeft(challenge, now: now)
             return days <= 1 ? "Last day" : "\(days) days left"
         }
     }
@@ -129,14 +140,64 @@ enum ChallengeText {
         }
         return (behind, false)
     }
+
+    /// "27.6 km to go", with what that means each day when `perDay`: "27.6 km to go · 5.5 km a day".
+    /// Nil once the target is reached, or when the challenge is over.
+    static func toGo(_ challenge: Challenge, status: ChallengeStatus, now: Date, unit: UnitSystem, perDay: Bool) -> String? {
+        guard status.state == .active || status.state == .upcoming else { return nil }
+        let metric = challenge.metric
+        let remaining = status.target - status.value
+        let shown = metric.shownValue(remaining, unit: unit)
+        guard remaining > 0, shown > 0 else { return nil }
+        let text = "\(metric.number(remaining, unit: unit)) \(metric.displayUnit(unit, count: shown)) to go"
+        guard perDay, status.state == .active else { return text }
+        let days = daysLeft(challenge, now: now)
+        guard days > 1 else { return text }
+        let daily = remaining / Double(days)
+        switch metric {
+        case .distance, .elevation:
+            let dailyShown = metric.shownValue(daily, unit: unit, rounding: .up)
+            guard dailyShown > 0 else { return text }
+            return "\(text) · \(metric.number(daily, unit: unit, rounding: .up)) \(metric.displayUnit(unit, count: dailyShown)) a day"
+        case .duration:
+            return "\(text) · \(Int((daily / 60).rounded(.up))) min a day"
+        case .runs, .activeDays:
+            return text
+        }
+    }
+
+    /// Days left, today included: the challenge ends at midnight after its last day.
+    static func daysLeft(_ challenge: Challenge, now: Date) -> Int {
+        let calendar = Calendar.current
+        return calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: challenge.endDate).day ?? 0
+    }
+
+    /// "Sep 13 – 30", with the year when it isn't this year's.
+    static func dateRange(_ challenge: Challenge) -> String {
+        let last = max(challenge.endDate.addingTimeInterval(-1), challenge.startDate)
+        var style = Date.IntervalFormatStyle.interval.month(.abbreviated).day()
+        if !Calendar.current.isDate(last, equalTo: .now, toGranularity: .year) {
+            style = style.year()
+        }
+        return (challenge.startDate..<last).formatted(style)
+    }
+
+    /// The metric's symbol in outline, as the challenge designs draw them.
+    static func symbol(_ metric: ChallengeMetric) -> String {
+        metric == .elevation ? "mountain.2" : metric.symbol
+    }
 }
 
-/// Every challenge: running, completed and ended.
+/// Every challenge: running now, suggested ones to start with a tap, your own, completed and ended.
 struct ChallengesView: View {
     @Query(sort: \Challenge.endDate, order: .reverse) private var challenges: [Challenge]
     @Query(sort: \Run.startDate) private var runs: [Run]
     @Environment(\.modelContext) private var context
+    @AppStorage(StrideSettings.unitSystem) private var unit: UnitSystem = .metric
     @State private var creating = false
+    /// Suggestions started on this visit stay in place, marked Joined.
+    @State private var joinedHere: Set<String> = []
+    @State private var joinedCount = 0
 
     var body: some View {
         let now = Date.now
@@ -145,55 +206,210 @@ struct ChallengesView: View {
         func items(_ states: Set<ChallengeStatus.State>) -> [Challenge] {
             challenges.filter { statuses[$0.id].map { states.contains($0.state) } ?? false }
         }
+        let running = items([.active, .upcoming]).sorted { $0.endDate < $1.endDate }
+        let suggested = ChallengeTemplate.catalog(unit: unit).filter { !isRunning($0, now: now) || joinedHere.contains($0.id) }
         return ScrollView {
-            if challenges.isEmpty {
-                IllustratedEmptyState(illustration: "challengeMountain", symbol: "flag.checkered", title: "No challenges yet",
-                                      message: "Pick a suggested challenge or set your own target.") {
-                    Button("New challenge") { creating = true }
-                        .buttonStyle(.stridePrimary)
-                        .padding(.top, Space.x2)
+            VStack(alignment: .leading, spacing: 0) {
+                if challenges.isEmpty {
+                    intro
+                        .padding(.bottom, Space.x5)
                 }
-                .padding(.top, Space.x5)
-            } else {
-                VStack(alignment: .leading, spacing: Space.x5) {
-                    section("Running", items([.active, .upcoming]).sorted { $0.endDate < $1.endDate }, statuses: statuses, now: now)
-                    section("Completed", items([.completed]), statuses: statuses, now: now)
-                    section("Ended", items([.missed]), statuses: statuses, now: now)
+                if !running.isEmpty {
+                    SectionHeading("Running now", style: .overline)
+                        .padding(.bottom, Space.x2)
+                    VStack(spacing: Space.x3) {
+                        ForEach(running) { challenge in
+                            if let status = statuses[challenge.id] {
+                                NavigationLink(value: challenge) {
+                                    ChallengeCard(challenge: challenge, status: status, now: now)
+                                        .contentShape(RoundedRectangle(cornerRadius: Radius.md))
+                                }
+                                .buttonStyle(.plain)
+                                .contextMenu { deleteButton(challenge) }
+                            }
+                        }
+                    }
+                    .padding(.bottom, Space.x5)
                 }
-                .padding(Space.x4)
+                if !suggested.isEmpty {
+                    SectionHeading("Suggested", style: .overline)
+                        .padding(.bottom, Space.x2)
+                    suggestions(suggested, now: now)
+                        .padding(.bottom, Space.x5)
+                }
+
+                Button {
+                    creating = true
+                } label: {
+                    Label("New challenge", systemImage: "plus")
+                }
+                .buttonStyle(.stridePrimary)
+                Text("Pick what counts, the target and the time frame.")
+                    .font(.footnote)
+                    .foregroundStyle(.inkMuted)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, Space.x2)
+
+                section("Completed", items([.completed]), statuses: statuses, now: now)
+                section("Ended", items([.missed]), statuses: statuses, now: now)
             }
+            .padding(.horizontal, Space.x4)
+            .padding(.top, Space.x4)
+            .padding(.bottom, Space.x5)
         }
         .background(Color.surface)
         .navigationTitle("Challenges")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button("New challenge", systemImage: "plus") { creating = true }
+        .navigationBarTitleDisplayMode(.large)
+        .sheet(isPresented: $creating) { NewChallengeView() }
+        .sensoryFeedback(.success, trigger: joinedCount)
+    }
+
+    private var intro: some View {
+        VStack(alignment: .leading, spacing: Space.x3) {
+            if Illustration.exists("challengeMountain") {
+                ArtThumbnail(name: "challengeMountain", width: nil, height: 150)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text("No challenges yet")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.ink)
+                Text("Start a suggested one below, or set your own target.")
+                    .font(.subheadline)
+                    .foregroundStyle(.inkMuted)
             }
         }
-        .sheet(isPresented: $creating) { NewChallengeView() }
+        .raisedCard()
+        .accessibilityElement(children: .combine)
+    }
+
+    private func isRunning(_ template: ChallengeTemplate, now: Date) -> Bool {
+        challenges.contains { $0.templateID == template.id && now < $0.endDate }
+    }
+
+    private func suggestions(_ templates: [ChallengeTemplate], now: Date) -> some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: Space.x3) {
+                ForEach(templates) { template in
+                    let joined = isRunning(template, now: now)
+                    SuggestedChallengeCard(template: template, joined: joined) {
+                        start(template)
+                    }
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .scrollIndicators(.hidden)
+        .contentMargins(.horizontal, Space.x4, for: .scrollContent)
+        .padding(.horizontal, -Space.x4)
+    }
+
+    private func start(_ template: ChallengeTemplate) {
+        // Suggested challenges are free.
+        context.insert(template.makeChallenge())
+        try? context.save()
+        joinedHere.insert(template.id)
+        joinedCount += 1
+    }
+
+    private func deleteButton(_ challenge: Challenge) -> some View {
+        Button("Delete Challenge", systemImage: "trash", role: .destructive) {
+            context.delete(challenge)
+            try? context.save()
+        }
     }
 
     @ViewBuilder
     private func section(_ title: String, _ items: [Challenge], statuses: [UUID: ChallengeStatus], now: Date) -> some View {
         if !items.isEmpty {
-            VStack(alignment: .leading, spacing: Space.x3) {
-                Text(title).font(.headline).foregroundStyle(.ink)
-                ForEach(items) { challenge in
-                    if let status = statuses[challenge.id] {
-                        NavigationLink(value: challenge) {
-                            ChallengeCard(challenge: challenge, status: status, now: now)
-                        }
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            Button("Delete Challenge", systemImage: "trash", role: .destructive) {
-                                context.delete(challenge)
-                                try? context.save()
+            VStack(alignment: .leading, spacing: Space.x2) {
+                SectionHeading(title, style: .overline)
+                GroupedCard(dividerInset: 0) {
+                    ForEach(items) { challenge in
+                        if let status = statuses[challenge.id] {
+                            NavigationLink(value: challenge) {
+                                ChallengeResultRow(challenge: challenge, status: status, now: now, unit: unit)
                             }
+                            .buttonStyle(.plain)
+                            .contextMenu { deleteButton(challenge) }
                         }
                     }
                 }
             }
+            .padding(.top, Space.x5)
         }
+    }
+}
+
+/// A suggested challenge in the carousel: its symbol, Start or Joined, the name and what it asks.
+private struct SuggestedChallengeCard: View {
+    let template: ChallengeTemplate
+    let joined: Bool
+    let start: () -> Void
+
+    var body: some View {
+        Button(action: start) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    IconBadge(ChallengeText.symbol(template.metric), style: joined ? .tinted(.success) : .lane, size: 36)
+                    Spacer(minLength: Space.x2)
+                    Text(joined ? "Joined" : "Start")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(joined ? Color.success : Color.lane)
+                }
+                Text(template.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.ink)
+                    .padding(.top, 10)
+                Text(template.detail)
+                    .font(.footnote)
+                    .foregroundStyle(.inkMuted)
+                    .padding(.top, 2)
+            }
+            .padding(14)
+            .frame(width: 160, alignment: .topLeading)
+            .frame(maxHeight: .infinity, alignment: .topLeading)
+            .background(Color.surfaceRaised, in: RoundedRectangle(cornerRadius: Radius.md))
+            .contentShape(RoundedRectangle(cornerRadius: Radius.md))
+        }
+        .buttonStyle(.plain)
+        .disabled(joined)
+        .accessibilityLabel(joined ? "\(template.title), joined" : "Start \(template.title)")
+        .accessibilityHint(template.detail)
+    }
+}
+
+/// A completed or ended challenge: icon, name, when it finished, and the final count.
+private struct ChallengeResultRow: View {
+    let challenge: Challenge
+    let status: ChallengeStatus
+    let now: Date
+    let unit: UnitSystem
+
+    var body: some View {
+        let completed = status.state == .completed
+        HStack(spacing: Space.x3) {
+            ChallengeIcon(metric: challenge.metric, state: status.state)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(challenge.title)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.ink)
+                Text(ChallengeText.state(challenge, status: status, now: now))
+                    .font(.footnote)
+                    .foregroundStyle(completed ? Color.success : Color.inkMuted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Text(challenge.metric.progressText(value: status.value, target: status.target, unit: unit))
+                .font(.footnote)
+                .monospacedDigit()
+                .foregroundStyle(.inkMuted)
+                .lineLimit(1)
+                .fixedSize()
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, Space.x4)
+        .frame(minHeight: 64)
+        .contentShape(Rectangle())
     }
 }
 
@@ -220,28 +436,7 @@ struct ChallengeDetailView: View {
         let status = challenge.status(samples: runs.map(\.sample), now: now)
         return ScrollView {
             VStack(alignment: .leading, spacing: Space.x5) {
-                VStack(alignment: .leading, spacing: Space.x3) {
-                    HStack(spacing: Space.x3) {
-                        ChallengeIcon(metric: challenge.metric, state: status.state)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(dateRange).font(.subheadline).foregroundStyle(.inkMuted)
-                            Text(ChallengeText.state(challenge, status: status, now: now))
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(status.state == .completed ? Color.success : Color.ink)
-                        }
-                    }
-                    MetricView(challenge.metric.title,
-                               value: challenge.metric.number(status.value, unit: unit, rounding: .down),
-                               unit: "of \(challenge.metric.number(status.target, unit: unit)) \(challenge.metric.targetUnit(status.target, unit: unit))",
-                               size: .large)
-                    ProgressBar(progress: status.fraction, height: 10)
-                    if let pace = ChallengeText.pace(challenge, status: status, unit: unit) {
-                        Text(pace.text)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(pace.onTrack ? Color.success : Color.inkMuted)
-                    }
-                }
-                .raisedCard()
+                ChallengeCard(challenge: challenge, status: status, now: now)
 
                 if !counted.isEmpty {
                     ChartCard(title: "Progress", summary: "\(counted.count) \(counted.count == 1 ? "run" : "runs")") {
@@ -250,7 +445,7 @@ struct ChallengeDetailView: View {
                 }
 
                 VStack(alignment: .leading, spacing: Space.x3) {
-                    Text("Runs that count").font(.headline).foregroundStyle(.ink)
+                    SectionHeading("Runs that count")
                     if counted.isEmpty {
                         Text(emptyRunsText(status))
                             .font(.subheadline)
@@ -259,7 +454,7 @@ struct ChallengeDetailView: View {
                     } else {
                         VStack(spacing: 0) {
                             ForEach(Array(counted.reversed().enumerated()), id: \.element.id) { index, run in
-                                if index > 0 { Divider().padding(.leading, Space.x4) }
+                                if index > 0 { Hairline(leadingInset: 84) }
                                 NavigationLink(value: run) {
                                     RunRow(run: run, unit: unit)
                                         .padding(.horizontal, Space.x4)
@@ -270,6 +465,7 @@ struct ChallengeDetailView: View {
                             }
                         }
                         .background(Color.surfaceRaised, in: RoundedRectangle(cornerRadius: Radius.md))
+                        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
                     }
                 }
             }
@@ -283,7 +479,7 @@ struct ChallengeDetailView: View {
                 Menu {
                     Button("Delete Challenge", systemImage: "trash", role: .destructive) { confirmingDelete = true }
                 } label: {
-                    Label("More", systemImage: "ellipsis.circle")
+                    Label("More", systemImage: "ellipsis")
                 }
             }
         }
@@ -309,11 +505,6 @@ struct ChallengeDetailView: View {
         case .missed: "No runs counted toward this challenge."
         default: "No runs yet. Every run from now until the end counts."
         }
-    }
-
-    private var dateRange: String {
-        let end = challenge.endDate.addingTimeInterval(-1)
-        return "\(challenge.startDate.formatted(.dateTime.month(.abbreviated).day())) – \(end.formatted(.dateTime.month(.abbreviated).day().year()))"
     }
 
     private struct Point {
@@ -345,7 +536,7 @@ struct ChallengeDetailView: View {
             ForEach(Array(points.enumerated()), id: \.offset) { _, point in
                 LineMark(x: .value("Date", point.date), y: .value(metric.title, point.value), series: .value("Line", "progress"))
                     .interpolationMethod(.stepEnd)
-                    .foregroundStyle(Color.track)
+                    .foregroundStyle(Color.lane)
                     .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round))
             }
             RuleMark(y: .value("Target", target))

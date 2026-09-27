@@ -18,8 +18,23 @@ Design system: https://claude.ai/artifact/AXgXamUybY5LSk9rdefbJa
 | 7 | Social & cloud | CloudKit sync, friends, leaderboards | Done: runs, shoes and challenges synced with iCloud (private CloudKit), settings through iCloud key-value, friends by code over CloudKit's public database (opt-in sharing), weekly and monthly leaderboards with cheers on iPhone, a Friends widget and Apple Watch |
 | 8 | Stride Pro | Subscription, paywall, Pro features, onboarding | Done: welcome pages on first launch (name, units, weekly goal, location, Apple Health, Apple Watch) followed by the paywall; Stride Pro yearly (US$ 39.99, 7-day free trial) and monthly (US$ 6.99) with StoreKit 2; Pro unlocks the 10K and Half plans, intervals, target-pace alerts, year and all-time stats and custom challenges; Profile shows the subscription with manage and restore; recording runs, history, Health, widgets, shoes, friends, week/month stats, First 5K and the Watch stay free |
 | 9 | Pro training and sharing | Race predictions, training load, adaptive plans, custom workouts, intervals on Apple Watch, Instagram sharing | Done (to verify on device): race predictions from recent best efforts and training paces; training load vs your usual week with pace trend; plan sessions coached at your personal paces, with a gentle restart after a break; a custom interval workout builder (synced with iCloud) used on iPhone and sent to Apple Watch; interval workouts run on the Watch with a step card, haptics and spoken steps; share a run as an Instagram Story (card, route, your photo, transparent sticker), save it or send it anywhere |
+| 10 | Redesign | Every screen rebuilt from the approved Claude Design canvas | Done (to verify on device): shared StrideUI components, onboarding, Home, Activities, run detail, run setup/countdown/live/summary, Progress, plans, workouts, Profile, Friends, Shoes, Challenges and every Apple Watch page follow the canvas |
 
 Each phase ends compiling and tested in the Simulator with a simulated route.
+
+## Phase 10: Redesign (approved canvas)
+
+Source of truth: https://claude.ai/artifact/R1ykVQdpZwV91r8eN8yavu (30 artboards, approved 2026-09-26). Build what's drawn, with real data, in both themes (the canvas is dark; tokens keep light mode working). The system TabView (Liquid Glass on iOS 26) stands in for the drawn tab bar.
+
+1. Foundation: shared pieces the artboards repeat (section header with link, glass icon button, stat tile, 7-day bars, progress track, workout step strip, route thumbnail, zone chip, grouped list card), in StrideUI or Stride/Shared.
+2. Screens, one owner per flow:
+   - Onboarding (4 pages): Features/Onboarding.
+   - Home (first run and regular), Activities, Run detail (delete moves into Edit): Features/Home, Features/Activities, Plans/ActivePlanCard, Shared run views.
+   - Run setup (targets show your best time; predictions with Pro), intervals, countdown (Start now), live run with step card, paused, summary: Features/Run, Tracking, Mirroring/MirroredRunView.
+   - Progress, Plans, Plan detail, Your workouts, Workout builder: Features/Progress, Features/Plans, Features/Workouts.
+   - Profile, Friends, Shoes, Challenges: Features/Profile, Friends, Shoes, Progress/ChallengeViews and NewChallengeView.
+   - Apple Watch: home, countdown, metrics (with intervals), zones, controls, summary.
+3. Review: compiles (Swift 6, imports), matches the artboards, nothing lost (Pro gating, flows, accessibility), then fixes.
 
 ## Architecture
 

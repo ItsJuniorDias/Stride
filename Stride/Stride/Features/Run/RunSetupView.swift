@@ -12,6 +12,8 @@ struct RunSetupView: View {
     @Query(filter: #Predicate<Shoe> { !$0.isRetired }, sort: \Shoe.createdAt) private var shoes: [Shoe]
     /// The runner's own interval workouts, after the presets.
     @Query(sort: \CustomWorkout.createdAt) private var customWorkouts: [CustomWorkout]
+    /// Newest first: best times, predictions and the usual pace behind the target captions.
+    @Query(sort: \Run.startDate, order: .reverse) private var runs: [Run]
     @AppStorage(StrideSettings.unitSystem) private var unit: UnitSystem = .metric
     @AppStorage(StrideSettings.autoPause) private var autoPause = true
     /// Seconds per kilometer, 0 when off. Remembered between runs.
@@ -27,6 +29,8 @@ struct RunSetupView: View {
     @AppStorage(StrideSettings.defaultShoeID) private var defaultShoeRaw = ""
     @State private var camera: MapCameraPosition = .userLocation(fallback: .automatic)
     @State private var upsell: ProFeature?
+    /// Worked out from the runs when they change, not on every redraw.
+    @State private var stats = SetupStats()
 
     /// Intervals and target-pace alerts come with Stride Pro.
     private var isPro: Bool { ProStore.shared.isPro }
@@ -62,19 +66,28 @@ struct RunSetupView: View {
     private struct DistancePreset: Hashable {
         let label: String
         let meters: Double
+        /// The best effort Stride keeps for this distance, if it keeps one.
+        var effort: EffortDistance? = nil
+        /// How a caption names it: "3 km", "half marathon".
+        var name: String? = nil
     }
 
     /// Race distances are exact in both unit systems; everyday distances follow the runner's unit.
     private var distancePresets: [DistancePreset] {
-        let half = DistancePreset(label: "Half", meters: 21_097.5)
-        let marathon = DistancePreset(label: "Marathon", meters: 42_195)
+        let half = DistancePreset(label: "Half", meters: 21_097.5, effort: .half, name: "half marathon")
+        let marathon = DistancePreset(label: "Marathon", meters: 42_195, effort: .marathon, name: "marathon")
         switch unit {
         case .metric:
-            return [1, 3, 5, 10].map { DistancePreset(label: "\($0) km", meters: Double($0) * 1_000) } + [half, marathon]
+            return [DistancePreset(label: "1 km", meters: 1_000, effort: .oneK),
+                    DistancePreset(label: "3 km", meters: 3_000),
+                    DistancePreset(label: "5 km", meters: 5_000, effort: .fiveK),
+                    DistancePreset(label: "10 km", meters: 10_000, effort: .tenK),
+                    half, marathon]
         case .imperial:
             let miles = { (n: Int) in DistancePreset(label: "\(n) mi", meters: Double(n) * 1_609.344) }
-            return [miles(1), miles(2), DistancePreset(label: "5K", meters: 5_000), miles(5),
-                    DistancePreset(label: "10K", meters: 10_000), half, marathon]
+            return [DistancePreset(label: "1 mi", meters: 1_609.344, effort: .oneMile), miles(2),
+                    DistancePreset(label: "5K", meters: 5_000, effort: .fiveK), miles(5),
+                    DistancePreset(label: "10K", meters: 10_000, effort: .tenK), half, marathon]
         }
     }
 
@@ -86,22 +99,32 @@ struct RunSetupView: View {
 
     private var canStart: Bool { !tracker.authorizationDenied && !tracker.accuracyLimited }
 
+    /// Changes when the captions may have: a run added, removed or re-analyzed.
+    private var statsKey: String {
+        "\(runs.count)-\(runs.first?.startDate.timeIntervalSince1970 ?? 0)-\(runs.reduce(0) { $0 + $1.effortsVersion })"
+    }
+
     var body: some View {
         Map(position: $camera) {
             UserAnnotation()
         }
         .mapStyle(.standard(pointsOfInterest: .excludingAll))
-        .mapControls {
-            MapUserLocationButton()
+        .overlay(alignment: .topTrailing) {
+            GlassIconButton("location.fill", accessibilityLabel: "Center on your location", tint: .lane) {
+                withAnimation { camera = .userLocation(fallback: .automatic) }
+            }
+            .padding(.trailing, Space.x4)
+            .padding(.top, Space.x2)
         }
         // An inset, not an overlay, so the map centers the runner in the area above the panel.
         .safeAreaInset(edge: .bottom) {
             panel
                 .padding(.horizontal, Space.x4)
-                .padding(.bottom, Space.x2)
+                .padding(.bottom, Space.x3)
         }
         .onAppear { tracker.startPreview() }
         .onDisappear { tracker.stopPreview() }
+        .task(id: statsKey) { stats = SetupStats(runs) }
         .alert("Apple Watch", isPresented: Binding(get: { mirrored.error != nil }, set: { if !$0 { mirrored.clearError() } })) {
             Button("OK") {}
         } message: {
@@ -118,24 +141,15 @@ struct RunSetupView: View {
         }
     }
 
+    // MARK: Panel
+
     private var panel: some View {
         VStack(spacing: Space.x4) {
-            HStack {
+            HStack(spacing: Space.x2) {
                 GPSChip(quality: tracker.gpsQuality)
-                Spacer()
+                Spacer(minLength: 0)
                 if mirrored.canStartOnWatch {
-                    Button {
-                        Task { await mirrored.startOnWatch(goal: watchGoal) }
-                    } label: {
-                        Label(mirrored.isStartingOnWatch ? "Opening…" : "Start on Watch", systemImage: "applewatch")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.ink)
-                            .padding(.horizontal, Space.x3)
-                            .frame(minHeight: 36)
-                            .background(Capsule().strokeBorder(Color.lineStrong, lineWidth: 1.5))
-                    }
-                    .disabled(mirrored.isStartingOnWatch)
-                    .accessibilityHint("Starts a run on your Apple Watch and shows it live here.")
+                    startOnWatchButton
                 }
             }
 
@@ -147,20 +161,10 @@ struct RunSetupView: View {
                                message: "Stride needs Precise Location to measure distance and pace. Turn it on in Settings.")
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Space.x2) {
-                    ForEach(runTypes) { type in
-                        let locked = type == .intervals && !isPro
-                        SelectableChip(type.title, isSelected: runType == type, tag: locked ? "Pro" : nil) {
-                            if locked { upsell = .intervals } else { runType = type }
-                        }
-                        .accessibilityHint(locked ? "Needs Stride Pro" : "")
-                    }
-                }
+            VStack(alignment: .leading, spacing: Space.x3) {
+                runTypeRow
+                targetPicker
             }
-
-            targetPicker
-                .frame(minHeight: 36)
 
             settings
 
@@ -172,26 +176,84 @@ struct RunSetupView: View {
         .glassPanel()
     }
 
+    private var startOnWatchButton: some View {
+        Button {
+            Task { await mirrored.startOnWatch(goal: watchGoal) }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "applewatch")
+                    .font(.system(size: 16, weight: .semibold))
+                    .accessibilityHidden(true)
+                Text(mirrored.isStartingOnWatch ? "Opening…" : "Start on Watch")
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.ink)
+            .padding(.leading, Space.x3)
+            .padding(.trailing, 14)
+            .frame(minHeight: 36)
+            .background(Capsule().strokeBorder(Color.lineStrong, lineWidth: 1.5))
+            .frame(minHeight: Dimension.hitMin)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, -Space.x1)
+        .disabled(mirrored.isStartingOnWatch)
+        .accessibilityHint("Starts a run on your Apple Watch and shows it live here.")
+    }
+
+    /// Free, Distance, Time, Intervals, sharing the width; a scrolling row when they don't fit
+    /// (large text, or the Pro tag on Intervals).
+    private var runTypeRow: some View {
+        ViewThatFits(in: .horizontal) {
+            FillRow(spacing: Space.x2) {
+                runTypeChips(fill: true)
+            }
+            chipRow {
+                runTypeChips(fill: false)
+            }
+        }
+        // The chips' 44pt tap areas overlap the rows around them, as drawn.
+        .padding(.vertical, -Space.x1)
+    }
+
+    @ViewBuilder private func runTypeChips(fill: Bool) -> some View {
+        ForEach(runTypes) { type in
+            let locked = type == .intervals && !isPro
+            RunTypeChip(title: type == .free ? "Free" : type.title, isSelected: runType == type,
+                        tag: locked ? "Pro" : nil, fills: fill) {
+                if locked { upsell = .intervals } else { runType = type }
+            }
+            .accessibilityHint(locked ? "Needs Stride Pro" : "")
+        }
+    }
+
     @ViewBuilder private var targetPicker: some View {
         switch runType {
         case .distance:
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Space.x2) {
+            VStack(alignment: .leading, spacing: Space.x2) {
+                chipRow {
                     ForEach(distancePresets, id: \.self) { preset in
                         SelectableChip(preset.label, isSelected: selectedMeters == preset.meters) {
                             targetMeters = preset.meters
                         }
                     }
                 }
+                if let preset = distancePresets.first(where: { $0.meters == selectedMeters }),
+                   let caption = caption(for: preset) {
+                    captionText(caption)
+                }
             }
         case .time:
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Space.x2) {
+            VStack(alignment: .leading, spacing: Space.x2) {
+                chipRow {
                     ForEach(timeOptions, id: \.self) { minutes in
                         SelectableChip("\(minutes) min", isSelected: targetMinutes == minutes) {
                             targetMinutes = minutes
                         }
                     }
+                }
+                if let caption = timeCaption {
+                    captionText(caption)
                 }
             }
         case .intervals:
@@ -204,18 +266,79 @@ struct RunSetupView: View {
         }
     }
 
-    /// The presets, then the runner's own workouts, then a way to build one (Stride Pro).
+    /// A row of chips that scrolls to the panel's edges.
+    private func chipRow<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Space.x2) {
+                content()
+            }
+        }
+        .contentMargins(.horizontal, Space.x4, for: .scrollContent)
+        .padding(.horizontal, -Space.x4)
+    }
+
+    private func captionText(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .monospacedDigit()
+            .foregroundStyle(.inkMuted)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentTransition(.opacity)
+    }
+
+    /// The runner's best time at the distance, and the predicted time with Stride Pro:
+    /// "Your best 24:12 · Predicted 23:58", "Your best 1K is 4:21", "Predicted 1:51:20".
+    private func caption(for preset: DistancePreset) -> String? {
+        let predicted = isPro ? preset.effort.flatMap { stats.predictions?[$0]?.time } : nil
+        if let effort = preset.effort, let best = stats.best[effort] {
+            if let predicted {
+                return "Your best \(RunFormat.duration(best)) · Predicted \(RunFormat.duration(predicted))"
+            }
+            return "Your best \(Self.bestName(effort)) is \(RunFormat.duration(best))"
+        }
+        if let predicted {
+            return "Predicted \(RunFormat.duration(predicted))"
+        }
+        // Stride keeps no record at this distance: an estimate from the runner's usual pace instead.
+        if preset.effort == nil, let pace = stats.usualPace {
+            return "At your usual pace, about \(RunFormat.duration(pace * preset.meters))"
+        }
+        return "No record at \(preset.name ?? preset.label) yet"
+    }
+
+    private static func bestName(_ effort: EffortDistance) -> String {
+        effort == .oneMile ? "mile" : effort.title
+    }
+
+    /// "At your usual pace, about 5.2 km".
+    private var timeCaption: String? {
+        guard let pace = stats.usualPace, pace > 0 else { return nil }
+        let meters = Double(targetMinutes * 60) / pace
+        return "At your usual pace, about \(RunFormat.distance(meters, unit: unit, fractionDigits: 1)) \(unit.distanceSymbol)"
+    }
+
+    /// The presets, then the runner's own workouts after a way to build one (Stride Pro), then the
+    /// picked workout at a glance.
     private var intervalsPicker: some View {
         let selected = intervalWorkout
         let own = customWorkouts.filter(\.isRunnable)
         let selectedOwn = own.first { $0.workoutID == selected.id }
-        return VStack(alignment: .leading, spacing: Space.x2) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Space.x2) {
+        return VStack(alignment: .leading, spacing: Space.x3) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Presets").metricLabelStyle()
+                chipRow {
                     ForEach(IntervalPresets.all) { preset in
                         SelectableChip(preset.name, isSelected: selected.id == preset.id) {
                             intervalWorkoutID = preset.id
                         }
+                    }
+                }
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Your workouts").metricLabelStyle()
+                chipRow {
+                    BuildWorkoutChip(isLocked: !isPro) {
+                        if isPro { editingWorkout = .new } else { upsell = .workouts }
                     }
                     ForEach(own) { custom in
                         SelectableChip(custom.displayName, isSelected: selected.id == custom.workoutID) {
@@ -225,24 +348,42 @@ struct RunSetupView: View {
                             Button("Edit", systemImage: "pencil") { edit(custom) }
                         }
                     }
-                    BuildWorkoutChip(isLocked: !isPro) {
-                        if isPro { editingWorkout = .new } else { upsell = .workouts }
+                }
+            }
+            VStack(alignment: .leading, spacing: Space.x2) {
+                HStack(alignment: .firstTextBaseline, spacing: Space.x2) {
+                    Text(selected.detail)
+                        .font(.subheadline)
+                        .foregroundStyle(.ink)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if let selectedOwn {
+                        Button("Edit") { edit(selectedOwn) }
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.lane)
+                            .accessibilityLabel("Edit \(selectedOwn.displayName)")
                     }
                 }
-            }
-            HStack(alignment: .firstTextBaseline, spacing: Space.x2) {
-                Text(selected.detail)
-                    .font(.caption)
-                    .foregroundStyle(.inkMuted)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                if let selectedOwn {
-                    Button("Edit") { edit(selectedOwn) }
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.lane)
-                        .accessibilityLabel("Edit \(selectedOwn.displayName)")
+                StepStrip(steps: selected.steps, paces: stats.paces, height: 8,
+                          accessibilityLabel: StepStrip.summary(of: selected.steps, unit: unit))
+                HStack(spacing: Space.x2) {
+                    StepLegend(warmUpTitle: "Warm-up", font: .caption2.weight(.semibold), spacing: Space.x3)
+                    Spacer(minLength: 0)
+                    Text(aboutText(selected))
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.inkMuted)
+                        .lineLimit(1)
                 }
             }
+            .padding(.top, 2)
         }
+    }
+
+    /// "About 45 min", from the runner's paces when there are enough runs, typical ones otherwise.
+    private func aboutText(_ workout: Workout) -> String {
+        let estimate = stats.paces.map { WorkoutEstimate(steps: workout.steps, paces: $0) }
+            ?? WorkoutEstimate(steps: workout.steps)
+        let minutes = Int((estimate.duration / 60).rounded())
+        return minutes >= 60 ? "About \(minutes / 60) h \(minutes % 60) min" : "About \(minutes) min"
     }
 
     /// Changing a workout is Stride Pro, like building one.
@@ -250,72 +391,71 @@ struct RunSetupView: View {
         if isPro { editingWorkout = .edit(workout) } else { upsell = .workouts }
     }
 
-    /// Shoe and auto-pause as settings rows, grouped like a small form.
+    // MARK: Settings
+
+    /// Shoe, auto-pause and target pace side by side on a sunken strip.
     private var settings: some View {
-        VStack(spacing: 0) {
+        DividedGrid(columns: shoes.isEmpty ? 2 : 3, dividers: .all, cellPadding: EdgeInsets(),
+                    fill: Color.surfaceSunken.opacity(0.85)) {
             if !shoes.isEmpty {
-                Menu {
-                    Picker("Shoe", selection: shoeSelection) {
-                        Text("No shoe").tag(UUID?.none)
-                        ForEach(shoes) { shoe in
-                            Text(shoe.name).tag(UUID?.some(shoe.id))
-                        }
-                    }
-                } label: {
-                    HStack(spacing: Space.x2) {
-                        Label("Shoe", systemImage: "shoe.fill")
-                            .foregroundStyle(.ink)
-                        Spacer()
-                        Text(shoes.first { $0.id == shoeID }?.name ?? "None")
-                            .foregroundStyle(.inkMuted)
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.caption)
-                            .foregroundStyle(.inkMuted)
-                    }
-                    .font(.subheadline.weight(.medium))
-                    .padding(.horizontal, Space.x4)
-                    .frame(minHeight: Dimension.hitMin)
-                    .contentShape(Rectangle())
-                }
-                Divider()
-                    .overlay(Color.line)
-                    .padding(.leading, Space.x4)
+                shoeCell
             }
-            Toggle(isOn: $autoPause) {
-                Label("Auto-pause", systemImage: "pause.circle")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.ink)
-            }
-            .tint(.track)
-            .padding(.horizontal, Space.x4)
-            .frame(minHeight: Dimension.hitMin)
-            Divider()
-                .overlay(Color.line)
-                .padding(.leading, Space.x4)
-            targetPaceRow
+            autoPauseCell
+            targetPaceCell
         }
-        .background(Color.surfaceSunken.opacity(0.85), in: RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
+    }
+
+    private var shoeName: String {
+        shoes.first { $0.id == shoeID }?.displayName ?? "None"
+    }
+
+    private var shoeCell: some View {
+        Menu {
+            Picker("Shoe", selection: shoeSelection) {
+                Text("No shoe").tag(UUID?.none)
+                ForEach(shoes) { shoe in
+                    Text(shoe.displayName).tag(UUID?.some(shoe.id))
+                }
+            }
+        } label: {
+            SettingCell(label: "Shoe") {
+                Text(shoeName)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.ink)
+                    .lineLimit(1)
+            }
+        }
+        .accessibilityLabel("Shoe, \(shoeName)")
+    }
+
+    private var autoPauseCell: some View {
+        Button {
+            autoPause.toggle()
+        } label: {
+            SettingCell(label: "Auto-pause") {
+                MiniSwitch(isOn: autoPause)
+            }
+        }
+        .buttonStyle(.plain)
+        .sensoryFeedback(.selection, trigger: autoPause)
+        .accessibilityRepresentation {
+            Toggle("Auto-pause", isOn: $autoPause)
+        }
     }
 
     /// Off, or a pace to hold; the coach says when the runner drifts more than 10 s off it. A Stride Pro
-    /// feature: without Pro the row opens the paywall, and a pace remembered from before is kept but unused.
-    @ViewBuilder private var targetPaceRow: some View {
+    /// feature: without Pro the cell opens the paywall, and a pace remembered from before is kept but unused.
+    @ViewBuilder private var targetPaceCell: some View {
         if isPro {
             targetPaceMenu
         } else {
             Button { upsell = .targetPace } label: {
-                HStack(spacing: Space.x2) {
-                    Label("Target pace", systemImage: "gauge.with.needle")
-                        .foregroundStyle(.ink)
-                    Spacer()
+                SettingCell(label: "Target pace") {
                     TagBadge("Pro")
                 }
-                .font(.subheadline.weight(.medium))
-                .padding(.horizontal, Space.x4)
-                .frame(minHeight: Dimension.hitMin)
-                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Target pace")
             .accessibilityHint("Needs Stride Pro")
         }
     }
@@ -329,6 +469,7 @@ struct RunSetupView: View {
             },
             set: { targetPace = $0 > 0 ? $0 * 1_000 / unit.metersPerUnit : 0 }
         )
+        let value = targetPace > 0 ? "\(RunFormat.pace(perUnit.wrappedValue)) \(unit.paceSymbol)" : "Off"
         return Menu {
             Picker("Target pace", selection: perUnit) {
                 Text("Off").tag(0.0)
@@ -337,21 +478,15 @@ struct RunSetupView: View {
                 }
             }
         } label: {
-            HStack(spacing: Space.x2) {
-                Label("Target pace", systemImage: "gauge.with.needle")
+            SettingCell(label: "Target pace") {
+                Text(value)
+                    .font(.footnote.weight(.semibold))
+                    .monospacedDigit()
                     .foregroundStyle(.ink)
-                Spacer()
-                Text(targetPace > 0 ? "\(RunFormat.pace(perUnit.wrappedValue)) \(unit.paceSymbol)" : "Off")
-                    .foregroundStyle(.inkMuted)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption)
-                    .foregroundStyle(.inkMuted)
+                    .lineLimit(1)
             }
-            .font(.subheadline.weight(.medium))
-            .padding(.horizontal, Space.x4)
-            .frame(minHeight: Dimension.hitMin)
-            .contentShape(Rectangle())
         }
+        .accessibilityLabel("Target pace, \(value)")
     }
 
     private func locationBanner(title: String, message: String) -> some View {
@@ -372,6 +507,8 @@ struct RunSetupView: View {
         .padding(Space.x4)
         .background(Color.trackSoft, in: RoundedRectangle(cornerRadius: Radius.md))
     }
+
+    // MARK: Run
 
     /// The target picked here, for a run started with "Start on Watch".
     private var watchGoal: MirrorGoal? {
@@ -403,22 +540,155 @@ struct RunSetupView: View {
     }
 }
 
-/// The last chip under Intervals: builds a workout of the runner's own. Dashed, as it adds rather than picks.
+/// What the setup panel knows from past runs: best times, race predictions, training paces and the
+/// usual pace.
+private struct SetupStats {
+    var best: [EffortDistance: TimeInterval] = [:]
+    var predictions: RacePredictions?
+    var paces: TrainingPaces?
+    /// Seconds per meter over the last ten runs of 1 km or more.
+    var usualPace: Double?
+
+    init() {}
+
+    /// `runs` newest first.
+    init(_ runs: [Run]) {
+        let entries = runs.map(\.recordEntry)
+        for (kind, record) in PersonalRecords.best(of: entries) {
+            if case .effort(let distance) = kind { best[distance] = record.value }
+        }
+        predictions = RacePredictor.predict(from: entries)
+        paces = predictions?.trainingPaces
+        let recent = runs.filter { $0.distance >= 1_000 && $0.duration > 0 }.prefix(10)
+        let meters = recent.reduce(0) { $0 + $1.distance }
+        let seconds = recent.reduce(0) { $0 + $1.duration }
+        usualPace = meters > 0 ? seconds / meters : nil
+    }
+}
+
+/// A run type in the panel's top row: 36pt capsule in a 44pt tap area, filling its share of the
+/// width when `fills`. An optional tag (PRO) follows the title while it isn't selected.
+private struct RunTypeChip: View {
+    let title: String
+    let isSelected: Bool
+    let tag: String?
+    let fills: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text(title)
+                    .lineLimit(1)
+                if let tag, !isSelected { TagBadge(tag) }
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(isSelected ? Color.onTrack : Color.ink)
+            .padding(.horizontal, Space.x3)
+            .frame(maxWidth: fills ? .infinity : nil, minHeight: 36)
+            .background {
+                if isSelected {
+                    Capsule().fill(Color.track)
+                } else {
+                    Capsule().strokeBorder(Color.lineStrong, lineWidth: 1.5)
+                }
+            }
+            .frame(minHeight: Dimension.hitMin)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .sensoryFeedback(.selection, trigger: isSelected)
+    }
+}
+
+/// Children at their natural width, with the room left over shared equally between them (the run
+/// types: "Distance" keeps its length, every chip grows by the same amount).
+private nonisolated struct FillRow: Layout {
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        let natural = naturalWidth(sizes)
+        return CGSize(width: proposal.width.map { max($0, natural) } ?? natural,
+                      height: sizes.map(\.height).max() ?? 0)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        let extra = sizes.isEmpty ? 0 : max(bounds.width - naturalWidth(sizes), 0) / CGFloat(sizes.count)
+        var x = bounds.minX
+        for (subview, size) in zip(subviews, sizes) {
+            let width = size.width + extra
+            subview.place(at: CGPoint(x: x, y: bounds.midY), anchor: .leading,
+                          proposal: ProposedViewSize(width: width, height: bounds.height))
+            x += width + spacing
+        }
+    }
+
+    private func naturalWidth(_ sizes: [CGSize]) -> CGFloat {
+        sizes.reduce(0) { $0 + $1.width } + spacing * CGFloat(max(sizes.count - 1, 0))
+    }
+}
+
+/// A cell of the settings strip: an overline and its value, the whole cell tappable.
+private struct SettingCell<Value: View>: View {
+    let label: String
+    @ViewBuilder let value: Value
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(label)
+                .metricLabelStyle()
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            value
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+}
+
+/// The small switch drawn in the settings strip; the cell around it is the control.
+private struct MiniSwitch: View {
+    let isOn: Bool
+
+    var body: some View {
+        Capsule()
+            .fill(isOn ? Color.track : Color.line)
+            .frame(width: 36, height: 20)
+            .overlay(alignment: isOn ? .trailing : .leading) {
+                Circle()
+                    .fill(.white)
+                    .frame(width: 16, height: 16)
+                    .shadow(color: .black.opacity(0.15), radius: 1, y: 1)
+                    .padding(2)
+            }
+            .animation(.snappy(duration: 0.2), value: isOn)
+            .accessibilityHidden(true)
+    }
+}
+
+/// The first chip under Your workouts: builds a workout of the runner's own. Dashed, as it adds
+/// rather than picks.
 private struct BuildWorkoutChip: View {
     let isLocked: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: Space.x2) {
+            HStack(spacing: 6) {
                 Image(systemName: "plus")
-                    .font(.subheadline.weight(.bold))
+                    .font(.system(size: 14, weight: .bold))
+                    .accessibilityHidden(true)
                 Text("Build your own")
                 if isLocked { TagBadge("Pro") }
             }
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(.ink)
-            .padding(.horizontal, Space.x4)
+            .padding(.leading, Space.x3)
+            .padding(.trailing, Space.x4)
             .frame(minHeight: 36)
             .background(Capsule().strokeBorder(Color.lineStrong, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3])))
             .contentShape(Capsule())

@@ -4,8 +4,12 @@ import StrideKit
 import StrideUI
 
 /// Name and shoe for any run; date, distance and time too for manual runs (GPS runs keep what was recorded).
+/// Deleting the run is here too, at the bottom, when the caller handles it.
 struct EditRunView: View {
     @Bindable var run: Run
+    /// Called after a confirmed delete, just before the sheet closes. The caller deletes the run once
+    /// the sheet is down (and leaves the run's screen), so nothing renders a deleted run.
+    var onDelete: (() -> Void)?
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \Shoe.createdAt) private var shoes: [Shoe]
@@ -17,6 +21,7 @@ struct EditRunView: View {
     @State private var date = Date.now
     @State private var meters: Double = 0
     @State private var seconds: TimeInterval = 0
+    @State private var confirmingDelete = false
 
     private var canSave: Bool {
         !run.isManual || PaceCheck.isPlausible(meters: meters, seconds: seconds)
@@ -46,6 +51,17 @@ struct EditRunView: View {
                 Section("Gear") {
                     ShoePicker(shoes: shoes, selection: $shoe, current: run.shoe)
                 }
+
+                if onDelete != nil {
+                    Section {
+                        Button("Delete run", role: .destructive) { confirmingDelete = true }
+                            .frame(maxWidth: .infinity)
+                    } footer: {
+                        Text(run.healthWorkoutID != nil
+                             ? "Removes it from your activities, stats and records, and from Apple Health."
+                             : "Removes it from your activities, stats and records.")
+                    }
+                }
             }
             .navigationTitle("Edit run")
             .scrollContentBackground(.hidden)
@@ -58,6 +74,14 @@ struct EditRunView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save", action: save).disabled(!canSave)
                 }
+            }
+            .confirmationDialog("Delete this run?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+                Button("Delete run", role: .destructive) {
+                    onDelete?()
+                    dismiss()
+                }
+            } message: {
+                Text("This can't be undone.")
             }
             .onAppear {
                 name = run.workoutName ?? ""

@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 import StrideKit
 import StrideUI
 
@@ -9,51 +10,85 @@ struct RacePredictorCard: View {
     let now: Date
     @AppStorage(StrideSettings.unitSystem) private var unit: UnitSystem = .metric
     @State private var upsell: ProFeature?
+    @State private var showsInfo = false
 
     private var isLocked: Bool { !ProStore.shared.isPro }
 
     var body: some View {
+        let result = isLocked ? nil : RacePredictor.predict(from: entries, now: now)
         VStack(alignment: .leading, spacing: Space.x3) {
             HStack(spacing: Space.x2) {
-                Text("Race predictions").font(.headline).foregroundStyle(.ink)
+                Text("Race predictions")
+                    .font(.headline)
+                    .foregroundStyle(.ink)
+                    .accessibilityAddTraits(.isHeader)
                 if isLocked { TagBadge("Pro") }
-                Spacer()
+                Spacer(minLength: 0)
+                if result != nil { infoButton }
             }
-            .accessibilityElement(children: .combine)
+            .frame(minHeight: 28)
+
+            if showsInfo, let result {
+                Text(caption(result.basis))
+                    .font(.footnote)
+                    .foregroundStyle(.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(Space.x3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.laneSoft, in: RoundedRectangle(cornerRadius: Radius.md))
+                    .transition(.opacity)
+            }
 
             if isLocked {
                 ProgressProTeaser(symbol: "flag.checkered",
                                   text: "Your likely 5K, 10K, half and marathon times, and the paces to train at.") {
                     upsell = .racePredictor
                 }
-            } else if let result = RacePredictor.predict(from: entries, now: now) {
+            } else if let result {
                 predictions(result)
+                if let paces = result.trainingPaces {
+                    TrainAtRow(paces: paces, unit: unit)
+                }
             } else {
                 Text("Run a few more times to see what you could race over 5K, 10K, the half and the marathon.")
                     .font(.subheadline)
                     .foregroundStyle(.inkMuted)
-                    .raisedCard()
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .raisedCard()
         .proPaywall($upsell)
     }
 
+    private var infoButton: some View {
+        Button {
+            withAnimation(.snappy) { showsInfo.toggle() }
+        } label: {
+            Image(systemName: showsInfo ? "info.circle.fill" : "info.circle")
+                .font(.system(size: 20))
+                .foregroundStyle(.lane)
+                .frame(width: Dimension.hitMin, height: Dimension.hitMin)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        // The tap target reaches into the card's padding, as drawn.
+        .padding(.vertical, -8)
+        .padding(.trailing, -12)
+        .accessibilityLabel("How predictions work")
+        .accessibilityValue(showsInfo ? "Shown" : "Hidden")
+    }
+
+    /// The four races on sunken tiles, two by two.
     private func predictions(_ result: RacePredictions) -> some View {
-        VStack(alignment: .leading, spacing: Space.x2) {
-            VStack(spacing: 0) {
-                ForEach(Array(RacePredictor.races.enumerated()), id: \.element.id) { index, race in
-                    if index > 0 { Divider().padding(.leading, Space.x4) }
-                    PredictionRow(race: race, prediction: result[race], unit: unit)
-                }
-                if let paces = result.trainingPaces {
-                    Divider()
-                    TrainingPacesList(paces: paces, unit: unit)
+        let races = RacePredictor.races
+        return Grid(horizontalSpacing: Space.x2, verticalSpacing: Space.x2) {
+            ForEach(Array(stride(from: 0, to: races.count, by: 2)), id: \.self) { start in
+                GridRow {
+                    ForEach(races[start..<min(start + 2, races.count)]) { race in
+                        PredictionTile(race: race, prediction: result[race], unit: unit)
+                    }
                 }
             }
-            .background(Color.surfaceRaised, in: RoundedRectangle(cornerRadius: Radius.md))
-            Text(caption(result.basis))
-                .font(.caption)
-                .foregroundStyle(.inkMuted)
         }
     }
 
@@ -66,85 +101,148 @@ struct RacePredictorCard: View {
     }
 }
 
-/// A race, its predicted time and pace, and the effort it comes from.
-private struct PredictionRow: View {
+/// A race, its predicted time and pace, on a sunken tile.
+private struct PredictionTile: View {
     let race: EffortDistance
     let prediction: RacePrediction?
     let unit: UnitSystem
 
     var body: some View {
-        HStack(spacing: Space.x3) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(raceTitle(race)).font(.subheadline.weight(.semibold)).foregroundStyle(.ink)
-                Text(detail).font(.caption).foregroundStyle(.inkMuted)
-            }
-            Spacer(minLength: Space.x2)
-            Text(prediction.map { RunFormat.duration($0.time) } ?? RunFormat.empty)
-                .font(.metricSmall)
-                .monospacedDigit()
-                .foregroundStyle(prediction == nil ? Color.inkMuted : Color.ink)
-        }
-        .padding(.horizontal, Space.x4)
-        .padding(.vertical, Space.x3)
-        .frame(minHeight: Dimension.hitMin)
-        .accessibilityElement(children: .combine)
+        StatTile(race.sentenceTitle,
+                 value: prediction.map { RunFormat.duration($0.time) } ?? RunFormat.empty,
+                 size: .medium,
+                 tint: prediction == nil ? .inkMuted : .ink,
+                 footnote: footnote)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .raisedCard(padding: Space.x3, fill: .surfaceSunken)
+            .accessibilityHint(source)
     }
 
-    private var detail: String {
+    /// `4'48" /km`, or what it takes to see one.
+    private var footnote: String {
         guard let prediction else {
             guard let shortest = RacePredictor.shortestEffort(for: race) else { return "Not enough runs yet" }
-            let effort = shortest == .oneMile ? "a mile" : "a " + shortest.title
-            return "Run \(effort) or longer to see it"
+            return "Run \(shortest == .oneMile ? "a mile" : "a " + shortest.title) or longer"
         }
-        let pace = RunFormat.pace(prediction.pace(in: unit))
-        let source = prediction.source == .oneMile ? "mile" : prediction.source.title
-        return "\(pace) \(unit.paceSymbol) · from your \(source)"
+        return "\(RunFormat.pace(prediction.pace(in: unit))) \(unit.paceSymbol)"
     }
 
-    /// "5K", "10K", "Half marathon", "Marathon".
-    private func raceTitle(_ race: EffortDistance) -> String {
-        race.title.prefix(1).uppercased() + String(race.title.dropFirst())
+    private var source: String {
+        guard let prediction else { return "" }
+        return "From your \(prediction.source == .oneMile ? "mile" : prediction.source.title)"
     }
 }
 
-/// Easy, marathon, tempo, interval and repetition paces from the 5K prediction.
-private struct TrainingPacesList: View {
+/// Easy, tempo and interval paces under the predictions, and the way to all five.
+private struct TrainAtRow: View {
     let paces: TrainingPaces
     let unit: UnitSystem
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.x3) {
-            Text("Training paces").metricLabelStyle()
-            ForEach(TrainingPaces.Intensity.allCases) { intensity in
-                HStack(alignment: .firstTextBaseline, spacing: Space.x3) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(intensity.title).font(.subheadline.weight(.semibold)).foregroundStyle(.ink)
-                        Text(intensity.detail).font(.caption).foregroundStyle(.inkMuted)
-                    }
-                    Spacer(minLength: Space.x2)
-                    Text(value(intensity))
-                        .font(.subheadline.weight(.semibold))
-                        .monospacedDigit()
-                        .foregroundStyle(.ink)
+        VStack(alignment: .leading, spacing: Space.x2) {
+            HStack {
+                Text("Train at").metricLabelStyle()
+                Spacer(minLength: Space.x2)
+                NavigationLink(value: ProgressRoute.trainingPaces) {
+                    LinkLabel("All 5 paces", showsChevron: true)
                 }
-                .accessibilityElement(children: .combine)
+                .buttonStyle(.strideLink)
+                .padding(.vertical, -14)
+            }
+            HStack(alignment: .top, spacing: Space.x2) {
+                ForEach([TrainingPaces.Intensity.easy, .threshold, .interval]) { intensity in
+                    let pace = paces.unitless(intensity, unit: unit)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(intensity.title)
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.inkMuted)
+                        Text(pace)
+                            .font(.subheadline.weight(.semibold))
+                            .monospacedDigit()
+                            .foregroundStyle(.ink)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(intensity.title) pace")
+                    .accessibilityValue("\(pace) \(unit.paceSymbol)")
+                }
             }
         }
-        .padding(Space.x4)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// `5'24"`, or `6'15"–6'45"` for easy runs, per the runner's unit.
-    private func value(_ intensity: TrainingPaces.Intensity) -> String {
-        let range = paces.range(intensity)
-        let fast = RunFormat.pace(TrainingPaces.perUnit(range.lowerBound, unit: unit))
-        let slow = RunFormat.pace(TrainingPaces.perUnit(range.upperBound, unit: unit))
-        let pace = fast == slow ? fast : fast + "–" + slow
-        return "\(pace) \(unit.paceSymbol)"
+        .padding(.top, Space.x3)
+        .overlay(alignment: .top) { Hairline() }
     }
 }
 
-/// A Pro card on Progress without Pro: what it shows, in words only, and the way to Stride Pro.
+extension TrainingPaces {
+    /// `5'24"`, or `6'15"–6'45"` for easy running, per the runner's unit, without the unit: for tiles
+    /// and columns whose heading already says it.
+    func unitless(_ intensity: Intensity, unit: UnitSystem) -> String {
+        let bounds = range(intensity)
+        let fast = RunFormat.pace(Self.perUnit(bounds.lowerBound, unit: unit))
+        let slow = RunFormat.pace(Self.perUnit(bounds.upperBound, unit: unit))
+        return fast == slow ? fast : fast + "–" + slow
+    }
+}
+
+private extension EffortDistance {
+    /// "5K", "10K", "Half marathon", "Marathon": sentence case for tiles.
+    var sentenceTitle: String {
+        title.prefix(1).uppercased() + String(title.dropFirst())
+    }
+}
+
+/// Every training pace, what it's for and how fast, from the runner's predicted 5K. Stride Pro.
+struct TrainingPacesView: View {
+    @Query(sort: \Run.startDate, order: .reverse) private var runs: [Run]
+    @AppStorage(StrideSettings.unitSystem) private var unit: UnitSystem = .metric
+    @State private var upsell: ProFeature?
+
+    var body: some View {
+        let paces = ProStore.shared.isPro ? RacePredictor.predict(from: runs.map(\.recordEntry))?.trainingPaces : nil
+        ScrollView {
+            VStack(alignment: .leading, spacing: Space.x3) {
+                if !ProStore.shared.isPro {
+                    ProgressProTeaser(symbol: "gauge.with.needle",
+                                      text: "Easy, marathon, tempo, interval and repetition paces from your best efforts.") {
+                        upsell = .racePredictor
+                    }
+                    .raisedCard()
+                } else if let paces {
+                    Text("From your predicted 5K, \(RunFormat.duration(paces.fiveKTime)). They update as your best efforts improve.")
+                        .font(.subheadline)
+                        .foregroundStyle(.inkMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                    GroupedCard {
+                        ForEach(TrainingPaces.Intensity.allCases) { intensity in
+                            CardRow(intensity.title, subtitle: intensity.detail) {
+                                Text("\(paces.unitless(intensity, unit: unit)) \(unit.paceSymbol)")
+                                    .font(.body.weight(.semibold))
+                                    .monospacedDigit()
+                                    .foregroundStyle(.ink)
+                            }
+                            .accessibilityElement(children: .combine)
+                        }
+                    }
+                } else {
+                    Text("Run a few more times and your training paces show up here.")
+                        .font(.subheadline)
+                        .foregroundStyle(.inkMuted)
+                        .raisedCard()
+                }
+            }
+            .padding(Space.x4)
+        }
+        .background(Color.surface)
+        .navigationTitle("Training paces")
+        .navigationBarTitleDisplayMode(.inline)
+        .proPaywall($upsell)
+    }
+}
+
+/// A Pro card on Progress without Pro: what it shows, in words only, and the way to Stride Pro. Sits
+/// inside the card it stands in for.
 struct ProgressProTeaser: View {
     let symbol: String
     let text: String
@@ -162,6 +260,5 @@ struct ProgressProTeaser: View {
             Button("See Stride Pro", action: action)
                 .buttonStyle(.strideSecondary)
         }
-        .raisedCard()
     }
 }

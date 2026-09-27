@@ -47,7 +47,7 @@ struct ManualRunView: View {
                     }
                     Picker("Feeling", selection: $feeling) {
                         Text("None").tag(Feeling?.none)
-                        ForEach(Feeling.allCases) { Text("\($0.emoji) \($0.title)").tag(Feeling?.some($0)) }
+                        ForEach(Feeling.allCases) { Text($0.title).tag(Feeling?.some($0)) }
                     }
                     ShoePicker(shoes: shoes, selection: $shoe)
                     TextField("Notes", text: $notes, axis: .vertical)

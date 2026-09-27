@@ -2,7 +2,8 @@ import SwiftUI
 import StrideKit
 import StrideUI
 
-/// A run happening on Apple Watch, live on iPhone. The controls act on the Watch's workout.
+/// A run happening on Apple Watch, live on iPhone, laid out like an iPhone run with the Watch's heart
+/// rate. The controls act on the Watch's workout.
 struct MirroredRunView: View {
     @Environment(MirroredWorkout.self) private var workout
     @AppStorage(StrideSettings.unitSystem) private var unit: UnitSystem = .metric
@@ -38,6 +39,7 @@ struct MirroredRunView: View {
 
     private var snapshot: MirrorSnapshot? { workout.snapshot }
     private var isTimeGoal: Bool { snapshot?.goalDuration != nil }
+    private var isPaused: Bool { workout.phase == .paused }
 
     /// Only the metrics redraw every second; the controls stay put so a hold isn't interrupted.
     private var live: some View {
@@ -47,69 +49,47 @@ struct MirroredRunView: View {
                 .padding(.top, Space.x2)
 
             TimelineView(.periodic(from: .now, by: 1)) { context in
-                metrics(at: context.date)
+                content(at: context.date)
             }
 
             controls
-                .frame(minHeight: 176, alignment: .top)
-                .padding(.bottom, Space.x4)
+                .frame(height: 140, alignment: .bottom)
+                .padding(.bottom, Space.x6)
+        }
+        .background {
+            if isPaused {
+                BrandGlow(.wash).ignoresSafeArea()
+            }
         }
         .animation(.snappy, value: showingMap)
         .animation(.snappy, value: workout.phase)
     }
 
-    @ViewBuilder private func metrics(at date: Date) -> some View {
+    @ViewBuilder private func content(at date: Date) -> some View {
         let elapsed = workout.elapsed(at: date)
         let distance = snapshot?.distance ?? 0
         VStack(spacing: 0) {
+            if hasCoachCard {
+                coachCard(distance: distance, elapsed: elapsed)
+                    .padding(.horizontal, Space.x4)
+                    .padding(.top, 10)
+            }
             if showingMap {
                 LiveRouteMap(coordinates: workout.route.coordinates)
-                    .clipShape(RoundedRectangle(cornerRadius: Radius.lg))
-                    .padding(Space.x4)
-                HStack(spacing: Space.x3) {
-                    MetricView("Distance", value: RunFormat.distance(distance, unit: unit), unit: unit.distanceSymbol, size: .small)
-                    MetricView("Time", value: RunFormat.duration(elapsed), size: .small)
-                    MetricView("Heart rate", value: heartRateText, unit: "bpm", size: .small)
-                }
-                .padding(.horizontal, Space.x4)
-                .padding(.bottom, Space.x5)
+                    .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+                    .padding(.horizontal, Space.x4)
+                    .padding(.top, Space.x4)
+                LiveMapMetrics(distance: distance, elapsed: elapsed, averagePace: averagePace, unit: unit)
+                    .padding(.horizontal, Space.x4)
+                    .padding(.top, Space.x5)
             } else {
-                Spacer(minLength: Space.x5)
-                Group {
-                    if isTimeGoal {
-                        MetricView("Time", value: RunFormat.duration(elapsed), size: .hero, alignment: .center)
-                    } else {
-                        MetricView("Distance", value: RunFormat.distance(distance, unit: unit), unit: unit.distanceSymbol, size: .hero, alignment: .center)
-                    }
-                }
-                .padding(.horizontal, Space.x4)
-                Spacer(minLength: Space.x5)
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: Space.x3), GridItem(.flexible())], spacing: Space.x5) {
-                    if isTimeGoal {
-                        MetricView("Distance", value: RunFormat.distance(distance, unit: unit), unit: unit.distanceSymbol, alignment: .center)
-                    } else {
-                        MetricView("Time", value: RunFormat.duration(elapsed), alignment: .center)
-                    }
-                    MetricView("Avg pace", value: RunFormat.pace(averagePace), unit: unit.paceSymbol, alignment: .center)
-                    MetricView("Current pace", value: RunFormat.pace(currentPace), unit: unit.paceSymbol, alignment: .center)
-                    MetricView("Heart rate", value: heartRateText, unit: "bpm", alignment: .center)
-                }
-                .padding(.horizontal, Space.x4)
-                if let zone {
-                    StatusChip("Zone \(zone.rawValue) · \(zone.name)", indicator: zone.color)
-                        .padding(.top, Space.x4)
-                }
-                Group {
-                    if let progress = snapshot?.workoutProgress {
-                        stepCard(progress, elapsed: elapsed)
-                    } else {
-                        goalBar(distance: distance, elapsed: elapsed)
-                    }
-                }
-                .padding(.horizontal, Space.x4)
-                .padding(.top, Space.x5)
-                Spacer(minLength: Space.x5)
+                Spacer(minLength: Space.x4)
+                LiveMetrics(distance: distance, elapsed: elapsed, currentPace: currentPace, averagePace: averagePace,
+                            calories: snapshot?.calories ?? 0, unit: unit, heroIsTime: isTimeGoal,
+                            heartRate: heartRateText, zone: zone)
+                    .padding(.horizontal, Space.x4)
             }
+            Spacer(minLength: Space.x5)
         }
     }
 
@@ -119,24 +99,39 @@ struct MirroredRunView: View {
                 if !workout.isLinked {
                     StatusChip("Disconnected from Apple Watch", indicator: .warning)
                 } else if !workout.isConnected {
-                    StatusChip(workout.phase == .paused ? "Paused · reconnecting" : "Reconnecting to Apple Watch", indicator: .warning)
-                } else if workout.phase == .paused {
+                    StatusChip(isPaused ? "Paused · reconnecting" : "Reconnecting to Apple Watch", indicator: .warning)
+                } else if isPaused {
                     StatusChip("Paused on Apple Watch", background: .trackSoft)
                 } else {
                     StatusChip("Live from Apple Watch", indicator: .success)
                 }
             }
             Spacer()
-            Button {
+            RoundIconButton(showingMap ? "square.grid.2x2" : "map",
+                            accessibilityLabel: showingMap ? "Show metrics" : "Show map") {
                 showingMap.toggle()
-            } label: {
-                Image(systemName: showingMap ? "number" : "map.fill")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.ink)
-                    .frame(width: Dimension.hitMin, height: Dimension.hitMin)
-                    .background(Color.surfaceRaised, in: Circle())
             }
-            .accessibilityLabel(showingMap ? "Show metrics" : "Show map")
+        }
+        .frame(minHeight: Dimension.hitMin)
+    }
+
+    // MARK: Coach
+
+    private var hasCoachCard: Bool {
+        snapshot?.workoutProgress != nil || (snapshot?.goalDistance ?? 0) > 0 || (snapshot?.goalDuration ?? 0) > 0
+    }
+
+    /// The interval step the Watch is on, as the iPhone's own runs show it, or the goal. A timed step
+    /// counts down between snapshots with the clock; a distance step moves with the next snapshot.
+    @ViewBuilder private func coachCard(distance: Double, elapsed: TimeInterval) -> some View {
+        if let progress = snapshot?.workoutProgress {
+            let remaining = progress.remaining(after: elapsed - (snapshot?.elapsed ?? elapsed))
+            WorkoutStepCard(workout: progress.workout, stepIndex: progress.stepIndex, remaining: remaining,
+                            progress: progress.progress(remaining: remaining), unit: unit, isPaused: isPaused)
+        } else if let target = snapshot?.goalDistance, target > 0 {
+            LiveGoalCard(goal: .distance(target), distance: distance, elapsed: elapsed, unit: unit, name: snapshot?.goalName)
+        } else if let target = snapshot?.goalDuration, target > 0 {
+            LiveGoalCard(goal: .time(target), distance: distance, elapsed: elapsed, unit: unit, name: snapshot?.goalName)
         }
     }
 
@@ -163,53 +158,7 @@ struct MirroredRunView: View {
         return RunFormat.paceSeconds(distance: snapshot.distance, duration: snapshot.elapsed, unit: unit)
     }
 
-    @ViewBuilder private func goalBar(distance: Double, elapsed: TimeInterval) -> some View {
-        let progress: Double? = {
-            if let target = snapshot?.goalDistance, target > 0 { return distance / target }
-            if let target = snapshot?.goalDuration, target > 0 { return elapsed / target }
-            return nil
-        }()
-        if let progress {
-            VStack(alignment: .leading, spacing: Space.x2) {
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.surfaceSunken)
-                        Capsule()
-                            .fill(progress >= 1 ? Color.success : Color.track)
-                            .frame(width: geo.size.width * min(progress, 1))
-                    }
-                }
-                .frame(height: 8)
-                Text(goalText(distance: distance, elapsed: elapsed, progress: progress))
-                    .font(.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(.inkMuted)
-            }
-        }
-    }
-
-    /// The interval step the Watch is on, as the iPhone's own runs show it. A timed step counts down
-    /// between snapshots with the clock; a distance step moves with the next snapshot.
-    @ViewBuilder private func stepCard(_ progress: MirrorWorkoutProgress, elapsed: TimeInterval) -> some View {
-        if let step = progress.currentStep {
-            let remaining = progress.remaining(after: elapsed - (snapshot?.elapsed ?? elapsed))
-            WorkoutStepCard(step: step, workout: progress.workout, next: progress.nextStep,
-                            remaining: remaining, progress: progress.progress(remaining: remaining), unit: unit)
-        } else {
-            StatusChip("Workout complete · keep going or finish", indicator: .success)
-        }
-    }
-
-    private func goalText(distance: Double, elapsed: TimeInterval, progress: Double) -> String {
-        if progress >= 1 { return "Goal reached" }
-        if let target = snapshot?.goalDistance {
-            return "\(RunFormat.distance(distance, unit: unit)) of \(RunFormat.distance(target, unit: unit, fractionDigits: 1)) \(unit.distanceSymbol)"
-        }
-        if let target = snapshot?.goalDuration {
-            return "\(RunFormat.duration(target - elapsed)) to go"
-        }
-        return ""
-    }
+    // MARK: Controls
 
     @ViewBuilder private var controls: some View {
         if !workout.isLinked {
@@ -217,35 +166,32 @@ struct MirroredRunView: View {
                 Button("Close") { workout.dismiss() }
                     .buttonStyle(.stridePrimary)
                 Text("Your run continues on Apple Watch and will appear in Activities when it ends.")
-                    .font(.caption)
+                    .font(.footnote)
                     .foregroundStyle(.inkMuted)
                     .multilineTextAlignment(.center)
             }
             .padding(.horizontal, Space.x4)
         } else if !workout.isConnected {
-            VStack(spacing: Space.x2) {
-                RunControlButton(workout.phase == .paused ? .resume : .pause) {}
+            CaptionedRunControl("Use your Apple Watch to control the run", isNote: true) {
+                RunControlButton(isPaused ? .resume : .pause) {}
                     .disabled(true)
                     .opacity(0.4)
-                Text("Use your Apple Watch to control the run").font(.caption).foregroundStyle(.inkMuted)
             }
-        } else if workout.phase == .paused {
-            HStack(spacing: Space.x7) {
-                VStack(spacing: Space.x2) {
+            .padding(.horizontal, Space.x4)
+        } else if isPaused {
+            HStack(spacing: 64) {
+                CaptionedRunControl("Hold to end") {
                     HoldToConfirmButton(accessibilityLabel: "Hold to end on Apple Watch", confirmationTitle: "End run on Apple Watch?") {
                         workout.end()
                     }
-                    Text("Hold to end").font(.caption).foregroundStyle(.inkMuted)
                 }
-                VStack(spacing: Space.x2) {
+                CaptionedRunControl("Resume") {
                     RunControlButton(.resume) { workout.resume() }
-                    Text("Resume").font(.caption).foregroundStyle(.inkMuted)
                 }
             }
         } else {
-            VStack(spacing: Space.x2) {
+            CaptionedRunControl("Controls your Apple Watch", isNote: true) {
                 RunControlButton(.pause) { workout.pause() }
-                Text("Controls your Apple Watch").font(.caption).foregroundStyle(.inkMuted)
             }
         }
     }
@@ -255,20 +201,19 @@ struct MirroredRunView: View {
     private var finished: some View {
         VStack(alignment: .leading, spacing: Space.x4) {
             Spacer()
-            Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 44))
-                .foregroundStyle(.success)
-                .accessibilityHidden(true)
+            IconBadge("checkmark", style: .tinted(.success), size: 44)
             Text("Run saved on Apple Watch")
                 .font(.largeTitle.bold())
                 .foregroundStyle(.ink)
+                .accessibilityAddTraits(.isHeader)
             Text("It'll appear in Activities in a moment, with your route, splits and heart-rate zones.")
                 .font(.body)
                 .foregroundStyle(.inkMuted)
             if let snapshot {
-                HStack(spacing: Space.x3) {
-                    MetricTile("Distance", value: RunFormat.distance(snapshot.distance, unit: unit), unit: unit.distanceSymbol)
-                    MetricTile("Time", value: RunFormat.duration(workout.elapsed(at: .now)))
+                DividedGrid(columns: 2) {
+                    StatTile("Distance", value: RunFormat.distance(snapshot.distance, unit: unit),
+                             unit: unit.distanceSymbol, size: .medium)
+                    StatTile("Time", value: RunFormat.duration(workout.elapsed(at: .now)), size: .medium)
                 }
             }
             Spacer()
@@ -276,5 +221,8 @@ struct MirroredRunView: View {
                 .buttonStyle(.stridePrimary)
         }
         .padding(Space.x4)
+        .background(alignment: .topLeading) {
+            BrandGlow(.corner).ignoresSafeArea()
+        }
     }
 }

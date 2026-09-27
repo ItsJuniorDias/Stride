@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Round 96pt control for the live run screen: Start, Pause or Resume.
 /// Finish is a separate hold-to-confirm control, see ``HoldToConfirmButton``.
+/// Start and Resume sit on a soft glow of the brand color; Pause is the ink circle.
 public struct RunControlButton: View {
     public enum Kind: Sendable {
         case start, pause, resume
@@ -30,7 +31,9 @@ public struct RunControlButton: View {
             action()
         } label: {
             ZStack {
-                Circle().fill(kind == .pause ? Color.ink : Color.track)
+                Circle()
+                    .fill(kind == .pause ? Color.ink : Color.track)
+                    .shadow(color: glow, radius: 14, y: 10)
                 label.foregroundStyle(kind == .pause ? Color.surface : Color.onTrack)
             }
             .frame(width: Dimension.runControl, height: Dimension.runControl)
@@ -38,6 +41,15 @@ public struct RunControlButton: View {
         .buttonStyle(PressScaleButtonStyle())
         .accessibilityLabel(kind.accessibilityLabel)
         .sensoryFeedback(.impact(weight: .medium), trigger: taps)
+    }
+
+    /// The brand glow under Start and Resume.
+    private var glow: Color {
+        switch kind {
+        case .start: Color.track.opacity(0.35)
+        case .resume: Color.track.opacity(0.3)
+        case .pause: .clear
+        }
     }
 
     @ViewBuilder private var label: some View {

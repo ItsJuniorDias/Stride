@@ -146,38 +146,109 @@ struct PlanRepeatStatus: View {
     }
 }
 
-/// Easy, tempo and interval paces for a plan screen, or why they aren't there yet. Stride Pro;
-/// without it, what they do and the way in.
-struct PersonalPacesRows: View {
+/// "Your paces" on a plan screen: easy, tempo and interval on sunken tiles, from the runner's
+/// predicted 5K; or why they aren't there yet. Stride Pro; without it, what they do and the way in.
+struct PersonalPacesCard: View {
     let paces: TrainingPaces?
     let unit: UnitSystem
     let isLocked: Bool
     let onUpsell: () -> Void
 
     var body: some View {
-        if isLocked {
-            ProUpsellRow(symbol: "gauge.with.needle", title: "Paces that fit you",
-                         detail: "Tempo and interval targets from your best efforts, called by the coach.",
-                         action: onUpsell)
-        } else if let paces {
-            ForEach([TrainingPaces.Intensity.easy, .threshold, .interval]) { intensity in
-                HStack(alignment: .firstTextBaseline, spacing: Space.x3) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(intensity.title).font(.subheadline.weight(.semibold)).foregroundStyle(.ink)
-                        Text(intensity.detail).font(.caption).foregroundStyle(.inkMuted)
-                    }
-                    Spacer(minLength: Space.x2)
-                    Text(paces.formatted(intensity, unit: unit))
-                        .font(.subheadline.weight(.semibold))
-                        .monospacedDigit()
+        VStack(alignment: .leading, spacing: Space.x3) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: Space.x2) {
+                    Text("Your paces")
+                        .font(.headline)
                         .foregroundStyle(.ink)
+                        .accessibilityAddTraits(.isHeader)
+                    if isLocked { TagBadge("Pro") }
                 }
-                .accessibilityElement(children: .combine)
+                if !isLocked, let paces {
+                    Text("Updated from your predicted 5K, \(RunFormat.duration(paces.fiveKTime)).")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.inkMuted)
+                }
             }
-        } else {
-            Label("Run a few times and your paces appear here.", systemImage: "gauge.with.needle")
-                .font(.subheadline)
-                .foregroundStyle(.inkMuted)
+            if isLocked {
+                ProUpsellRow(symbol: "gauge.with.needle", title: "Paces that fit you",
+                             detail: "Tempo and interval targets from your best efforts, called by the coach.",
+                             action: onUpsell)
+            } else if let paces {
+                // The easy range is the widest, so its tile is too.
+                WeightedColumns(weights: [1.4, 1, 1], spacing: Space.x2) {
+                    tile(.easy, footnote: "Most runs", paces: paces)
+                    tile(.threshold, footnote: "Tempo runs", paces: paces)
+                    tile(.interval, footnote: "Repeats", paces: paces)
+                }
+            } else {
+                Label("Run a few times and your paces appear here.", systemImage: "gauge.with.needle")
+                    .font(.subheadline)
+                    .foregroundStyle(.inkMuted)
+            }
         }
+        .raisedCard()
+    }
+
+    private func tile(_ intensity: TrainingPaces.Intensity, footnote: String, paces: TrainingPaces) -> some View {
+        let pace = paces.unitless(intensity, unit: unit)
+        return VStack(alignment: .leading, spacing: 0) {
+            Text(intensity.title).metricLabelStyle()
+            Text(pace)
+                .font(.subheadline.weight(.bold))
+                .monospacedDigit()
+                .foregroundStyle(.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .padding(.top, 6)
+            Text(footnote)
+                .font(.footnote)
+                .foregroundStyle(.inkMuted)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .padding(.top, 2)
+        }
+        .padding(.vertical, Space.x3)
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color.surfaceSunken, in: RoundedRectangle(cornerRadius: Radius.md))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(intensity.title) pace, \(footnote.lowercased())")
+        .accessibilityValue("\(pace) \(unit.paceSymbol)")
+    }
+}
+
+/// Columns whose widths follow `weights` (1.4, 1, 1 gives the first 40% more room), all as tall as
+/// the tallest.
+nonisolated struct WeightedColumns: Layout {
+    let weights: [CGFloat]
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? subviews.reduce(0) { $0 + $1.sizeThatFits(.unspecified).width }
+            + spacing * CGFloat(max(subviews.count - 1, 0))
+        let widths = columnWidths(total: width, count: subviews.count)
+        let height = zip(subviews, widths).map { subview, width in
+            subview.sizeThatFits(ProposedViewSize(width: width, height: nil)).height
+        }.max() ?? 0
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let widths = columnWidths(total: bounds.width, count: subviews.count)
+        var x = bounds.minX
+        for (subview, width) in zip(subviews, widths) {
+            subview.place(at: CGPoint(x: x, y: bounds.minY), anchor: .topLeading,
+                          proposal: ProposedViewSize(width: width, height: bounds.height))
+            x += width + spacing
+        }
+    }
+
+    private func columnWidths(total: CGFloat, count: Int) -> [CGFloat] {
+        guard count > 0 else { return [] }
+        let shares = (0..<count).map { $0 < weights.count ? weights[$0] : 1 }
+        let sum = shares.reduce(0, +)
+        let available = max(total - spacing * CGFloat(count - 1), 0)
+        return shares.map { available * $0 / max(sum, 0.001) }
     }
 }

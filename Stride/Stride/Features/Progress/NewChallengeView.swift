@@ -38,31 +38,6 @@ struct NewChallengeView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Suggested") {
-                    ForEach(ChallengeTemplate.catalog(unit: unit)) { template in
-                        let joined = isRunning(template)
-                        Button {
-                            create(template.makeChallenge())
-                        } label: {
-                            HStack(spacing: Space.x3) {
-                                ChallengeIcon(metric: template.metric, state: .active)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(template.title).font(.subheadline.weight(.semibold)).foregroundStyle(.ink)
-                                    Text(template.detail).font(.caption).foregroundStyle(.inkMuted)
-                                }
-                                Spacer(minLength: 0)
-                                if joined {
-                                    Text("Joined").font(.caption.weight(.semibold)).foregroundStyle(.success)
-                                }
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(joined)
-                        .accessibilityHint(joined ? "Already running" : "Starts this challenge")
-                    }
-                }
-
                 if !canMakeOwn {
                     Section("Your own") {
                         ProUpsellRow(symbol: "slider.horizontal.3", title: "Make your own",
@@ -98,6 +73,31 @@ struct NewChallengeView: View {
                     Button("Start challenge") { create(ownChallenge) }
                         .disabled(storedTarget <= 0)
                 }
+                }
+
+                Section("Suggested") {
+                    ForEach(ChallengeTemplate.catalog(unit: unit)) { template in
+                        let joined = isRunning(template)
+                        Button {
+                            create(template.makeChallenge())
+                        } label: {
+                            HStack(spacing: Space.x3) {
+                                ChallengeIcon(metric: template.metric, state: .active)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(template.title).font(.subheadline.weight(.semibold)).foregroundStyle(.ink)
+                                    Text(template.detail).font(.footnote).foregroundStyle(.inkMuted)
+                                }
+                                Spacer(minLength: 0)
+                                if joined {
+                                    Text("Joined").font(.footnote.weight(.semibold)).foregroundStyle(.success)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(joined)
+                        .accessibilityHint(joined ? "Already running" : "Starts this challenge")
+                    }
                 }
             }
             .scrollContentBackground(.hidden)

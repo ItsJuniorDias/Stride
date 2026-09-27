@@ -28,37 +28,38 @@ struct ShoeDetailView: View {
         let totals = RunTotals(runs.map(\.sample))
         return ScrollView {
             VStack(alignment: .leading, spacing: Space.x5) {
-                VStack(alignment: .leading, spacing: Space.x4) {
+                VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: Space.x3) {
-                        ShoeIcon(shoe: shoe, size: 56)
+                        ShoeIcon(shoe: shoe, size: 44)
                         VStack(alignment: .leading, spacing: 2) {
                             if !shoe.brand.isEmpty {
                                 Text(shoe.brand).font(.subheadline).foregroundStyle(.inkMuted)
                             }
-                            HStack(spacing: Space.x2) {
-                                if isDefault { StatusChip("Default", indicator: .lane, background: .laneSoft) }
-                                if shoe.isRetired { StatusChip("Retired", indicator: .inkMuted, background: .surfaceSunken) }
+                            if isDefault || shoe.isRetired {
+                                HStack(spacing: Space.x2) {
+                                    if isDefault { SoftBadge("Default", tone: .lane) }
+                                    if shoe.isRetired { SoftBadge("Retired", tone: .muted) }
+                                }
                             }
                         }
                     }
-                    MetricView("Distance", value: ShoeWear.distance(shoe.totalDistance, unit: unit),
-                               unit: "of \(ShoeWear.distance(shoe.maxDistance, unit: unit)) \(unit.distanceSymbol)", size: .large)
-                    ProgressBar(progress: shoe.wear, tint: ShoeWear.tint(shoe), height: 10)
-                    Text(wearText)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(shoe.isWornOut && !shoe.isRetired ? Color.warning : Color.inkMuted)
+                    StatTile("Distance", value: ShoeWear.distance(shoe.totalDistance, unit: unit),
+                             unit: "of \(ShoeWear.distance(shoe.maxDistance, unit: unit)) \(unit.distanceSymbol)", size: .large)
+                        .padding(.top, Space.x4)
+                    TrackBar(progress: shoe.wear, tint: ShoeWear.tint(shoe), height: 10, band: shoe.isRetired ? nil : 0.9...1)
+                        .padding(.top, Space.x3)
+                    Text(ShoeWear.status(shoe, unit: unit))
+                        .font(.footnote)
+                        .foregroundStyle(ShoeWear.isDue(shoe) ? Color.warning : Color.inkMuted)
+                        .padding(.top, Space.x2)
                 }
                 .raisedCard()
 
-                Grid(horizontalSpacing: Space.x3, verticalSpacing: Space.x3) {
-                    GridRow {
-                        MetricTile("Runs", value: "\(totals.runs)")
-                        MetricTile("Time", value: totalTime(totals.duration))
-                    }
-                    GridRow {
-                        MetricTile("Avg pace", value: RunFormat.pace(totals.averagePace(in: unit)), unit: unit.paceSymbol)
-                        MetricTile("Last run", value: runs.first.map { shortDate($0.startDate) } ?? RunFormat.empty)
-                    }
+                DividedGrid(columns: 2) {
+                    StatTile("Runs", value: "\(totals.runs)", size: .medium)
+                    StatTile("Time", value: totalTime(totals.duration), size: .medium)
+                    StatTile("Avg pace", value: RunFormat.pace(totals.averagePace(in: unit)), unit: unit.paceSymbol, size: .medium)
+                    StatTile("Last run", value: runs.first.map { shortDate($0.startDate) } ?? RunFormat.empty, size: .medium)
                 }
 
                 VStack(spacing: Space.x3) {
@@ -73,7 +74,7 @@ struct ShoeDetailView: View {
                 }
 
                 VStack(alignment: .leading, spacing: Space.x3) {
-                    Text("Runs").font(.headline).foregroundStyle(.ink)
+                    SectionHeading("Runs", detail: runs.isEmpty ? nil : "\(runs.count)")
                     if runs.isEmpty {
                         Text("No runs in these shoes yet.")
                             .font(.subheadline)
@@ -82,7 +83,7 @@ struct ShoeDetailView: View {
                     } else {
                         LazyVStack(spacing: 0) {
                             ForEach(Array(runs.enumerated()), id: \.element.id) { index, run in
-                                if index > 0 { Divider().padding(.leading, Space.x4) }
+                                if index > 0 { Hairline(leadingInset: 84) }
                                 NavigationLink(value: run) {
                                     RunRow(run: run, unit: unit)
                                         .padding(.horizontal, Space.x4)
@@ -93,6 +94,7 @@ struct ShoeDetailView: View {
                             }
                         }
                         .background(Color.surfaceRaised, in: RoundedRectangle(cornerRadius: Radius.md))
+                        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
                     }
                 }
             }
@@ -127,14 +129,5 @@ struct ShoeDetailView: View {
         } message: {
             Text("Its runs stay, without a shoe. To keep its history, retire it instead.")
         }
-    }
-
-    private var wearText: String {
-        if shoe.isRetired { return "Retired after \(ShoeWear.distance(shoe.totalDistance, unit: unit)) \(unit.distanceSymbol)" }
-        let remaining = shoe.remainingDistance
-        if remaining <= 0 {
-            return "\(ShoeWear.distance(-remaining, unit: unit)) \(unit.distanceSymbol) past its replacement distance"
-        }
-        return "\(ShoeWear.distance(remaining, unit: unit)) \(unit.distanceSymbol) left before replacing"
     }
 }

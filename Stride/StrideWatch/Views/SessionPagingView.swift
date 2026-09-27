@@ -7,12 +7,14 @@ import StrideUI
 struct SessionPagingView: View {
     @Environment(WorkoutManager.self) private var workout
     @State private var page: Page = .metrics
+    /// New on the controls: end this run and go back to the start list for the next one.
+    let onNew: () -> Void
 
     enum Page: Hashable { case controls, metrics, zones, nowPlaying }
 
     var body: some View {
         TabView(selection: $page) {
-            WatchControlsView().tag(Page.controls)
+            WatchControlsView(onNew: onNew).tag(Page.controls)
             WatchMetricsView().tag(Page.metrics)
             WatchZonesView().tag(Page.zones)
             NowPlayingView().tag(Page.nowPlaying)

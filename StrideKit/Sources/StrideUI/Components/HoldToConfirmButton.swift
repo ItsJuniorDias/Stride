@@ -38,17 +38,18 @@ public struct HoldToConfirmButton: View {
 
     public var body: some View {
         ZStack {
+            // A 4pt ring 7pt out from the button, with the screen showing through the gap.
             Circle()
                 .stroke(Color.line, lineWidth: 4)
-                .padding(-7)
+                .padding(-9)
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(fill, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-                .padding(-7)
+                .padding(-9)
             Circle().fill(fill)
             Image(systemName: systemImage)
-                .font(.system(size: 28, weight: .bold))
+                .font(.system(size: 26, weight: .bold))
                 .foregroundStyle(foreground)
         }
         .frame(width: Dimension.runControl, height: Dimension.runControl)
