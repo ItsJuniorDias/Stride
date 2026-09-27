@@ -3,98 +3,40 @@ import SwiftData
 import StrideKit
 import StrideUI
 
-/// Progress: the headline records on sunken tiles, each opening the run that set it, and a way into
-/// all of them.
+/// Progress: the headline records, with a way into all of them.
 struct RecordsSection: View {
     let records: [RecordKind: PersonalRecord]
     let runs: [Run]
     @AppStorage(StrideSettings.unitSystem) private var unit: UnitSystem = .metric
 
     /// The records shown here, in order of preference.
-    private static let highlights: [RecordKind] = [.effort(.fiveK), .effort(.tenK), .longestDistance, .effort(.half),
-                                                   .effort(.marathon), .effort(.oneK), .effort(.oneMile)]
+    private static let highlights: [RecordKind] = [.effort(.fiveK), .effort(.tenK), .effort(.half), .effort(.marathon),
+                                                   .longestDistance, .effort(.oneK), .effort(.oneMile)]
 
     var body: some View {
-        let shown = Array(Self.highlights.compactMap { records[$0] }.prefix(3))
+        let shown = Self.highlights.compactMap { records[$0] }.prefix(3)
         VStack(alignment: .leading, spacing: Space.x3) {
-            SectionHeading("Personal records") {
-                if !records.isEmpty { SeeAllLink(route: .records) }
-            }
+            SectionHeader(title: "Personal records", route: records.isEmpty ? nil : .records)
             if shown.isEmpty {
                 HStack(spacing: Space.x3) {
-                    ArtThumbnail(name: "recordsTrophy", width: 64, height: 64)
+                    Illustration(name: "recordsTrophy")
+                        .frame(width: 88, height: 88)
+                        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
                     Text("Your fastest times and longest runs show up here after your first run.")
                         .font(.subheadline)
                         .foregroundStyle(.inkMuted)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
+                .raisedCard()
             } else {
-                // Three columns even with fewer records, so tiles keep their size.
-                HStack(alignment: .top, spacing: Space.x2) {
-                    ForEach(0..<3, id: \.self) { index in
-                        if index < shown.count {
-                            let record = shown[index]
-                            RecordTile(record: record, run: runs.first { $0.id == record.runID }, unit: unit)
-                        } else {
-                            Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
-                        }
+                VStack(spacing: 0) {
+                    ForEach(Array(shown.enumerated()), id: \.element.id) { index, record in
+                        if index > 0 { Divider().padding(.leading, Space.x4) }
+                        RecordRow(record: record, kind: record.kind, run: runs.first { $0.id == record.runID }, unit: unit)
                     }
                 }
-                .fixedSize(horizontal: false, vertical: true)
+                .background(Color.surfaceRaised, in: RoundedRectangle(cornerRadius: Radius.md))
             }
         }
-        .raisedCard()
-    }
-}
-
-/// A headline record: the trophy and a short title, the value, and the day it was set.
-private struct RecordTile: View {
-    let record: PersonalRecord
-    let run: Run?
-    let unit: UnitSystem
-
-    var body: some View {
-        if let run, !run.isDeleted {
-            NavigationLink(value: run) { content }
-                .buttonStyle(.plain)
-                .accessibilityHint("Opens the run")
-        } else {
-            content
-        }
-    }
-
-    private var content: some View {
-        let value = Self.value(record, unit: unit)
-        return StatTile(Self.title(record.kind), value: value.value, unit: value.unit, size: .small,
-                        symbol: .leading("trophy", color: .track), footnote: shortDate(record.date))
-            .padding(.vertical, Space.x3)
-            .padding(.horizontal, 10)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(Color.surfaceSunken, in: RoundedRectangle(cornerRadius: Radius.md))
-            .contentShape(RoundedRectangle(cornerRadius: Radius.md))
-    }
-
-    /// Short enough for a third of the card: "5K", "Half", "Longest".
-    private static func title(_ kind: RecordKind) -> String {
-        switch kind {
-        case .effort(.oneK): "1K"
-        case .effort(.oneMile): "Mile"
-        case .effort(.fiveK): "5K"
-        case .effort(.tenK): "10K"
-        case .effort(.half): "Half"
-        case .effort(.marathon): "Marathon"
-        case .longestDistance: "Longest"
-        case .longestDuration: "Longest time"
-        case .mostElevation: "Climb"
-        }
-    }
-
-    /// Times as they are; the longest run to a tenth, as drawn.
-    private static func value(_ record: PersonalRecord, unit: UnitSystem) -> (value: String, unit: String?) {
-        if record.kind == .longestDistance {
-            return (RunFormat.distance(record.value, unit: unit, fractionDigits: 1), unit.distanceSymbol)
-        }
-        return record.kind.formatted(record.value, unit: unit)
     }
 }
 
@@ -118,12 +60,12 @@ struct RecordRow: View {
         HStack(spacing: Space.x3) {
             Image(systemName: record == nil ? "trophy" : "trophy.fill")
                 .font(.body)
-                .foregroundStyle(record == nil ? Color.lineStrong : Color.track)
+                .foregroundStyle(record == nil ? Color.line : Color.track)
                 .frame(width: 28)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(kind.title).font(.body.weight(.semibold)).foregroundStyle(.ink)
-                Text(detail).font(.footnote).foregroundStyle(.inkMuted)
+                Text(kind.title).font(.subheadline.weight(.semibold)).foregroundStyle(.ink)
+                Text(detail).font(.caption).foregroundStyle(.inkMuted)
             }
             Spacer(minLength: Space.x2)
             if let record {
@@ -131,20 +73,22 @@ struct RecordRow: View {
                 HStack(alignment: .firstTextBaseline, spacing: Space.x1) {
                     Text(formatted.value).font(.metricSmall).monospacedDigit().foregroundStyle(.ink)
                     if let symbol = formatted.unit {
-                        Text(symbol).font(.footnote.weight(.semibold)).foregroundStyle(.inkMuted)
+                        Text(symbol).font(.caption.weight(.semibold)).foregroundStyle(.inkMuted)
                     }
                 }
             } else {
                 Text(RunFormat.empty).font(.metricSmall).foregroundStyle(.inkMuted)
             }
             if run != nil {
-                DisclosureChevron()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.inkMuted)
+                    .accessibilityHidden(true)
             }
         }
         .padding(.horizontal, Space.x4)
         .padding(.vertical, Space.x3)
-        .frame(minHeight: 52)
-        .contentShape(Rectangle())
+        .frame(minHeight: Dimension.hitMin)
         .accessibilityElement(children: .combine)
     }
 
@@ -188,19 +132,17 @@ struct RecordsView: View {
     private func group(_ title: String, kinds: [RecordKind], records: [RecordKind: PersonalRecord], runs: [UUID: Run],
                        footer: String?) -> some View {
         VStack(alignment: .leading, spacing: Space.x3) {
-            SectionHeading(title)
-            // Rules start under the titles, past the trophies.
-            GroupedCard(dividerInset: Space.x4 + 28 + Space.x3) {
-                ForEach(kinds) { kind in
+            Text(title).font(.headline).foregroundStyle(.ink)
+            VStack(spacing: 0) {
+                ForEach(Array(kinds.enumerated()), id: \.element.id) { index, kind in
+                    if index > 0 { Divider().padding(.leading, Space.x4) }
                     let record = records[kind]
                     RecordRow(record: record, kind: kind, run: record.flatMap { runs[$0.runID] }, unit: unit)
                 }
             }
+            .background(Color.surfaceRaised, in: RoundedRectangle(cornerRadius: Radius.md))
             if let footer {
-                Text(footer)
-                    .font(.footnote)
-                    .foregroundStyle(.inkMuted)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(footer).font(.caption).foregroundStyle(.inkMuted)
             }
         }
     }

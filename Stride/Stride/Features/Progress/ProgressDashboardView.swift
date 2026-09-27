@@ -3,8 +3,8 @@ import SwiftData
 import StrideKit
 import StrideUI
 
-/// Totals by week, month and year, race predictions, training load, streaks, personal records,
-/// challenges, shoes and friends.
+/// Totals by week, month and year, training load, streaks, race predictions, personal records,
+/// challenges and shoes.
 struct ProgressDashboardView: View {
     @Query(sort: \Run.startDate, order: .reverse) private var runs: [Run]
     @Environment(\.scenePhase) private var scenePhase
@@ -21,21 +21,15 @@ struct ProgressDashboardView: View {
                 let records = PersonalRecords.best(of: entries)
                 VStack(alignment: .leading, spacing: Space.x5) {
                     PeriodStatsCard(samples: samples, firstRun: runs.last?.startDate, now: now)
-                    RacePredictorCard(entries: entries, now: now)
                     TrainingLoadCard(samples: samples, now: now)
                     StreaksCard(samples: samples, now: now)
+                    FriendsSection(samples: samples, now: now)
+                    RacePredictorCard(entries: entries, now: now)
                     RecordsSection(records: records, runs: runs)
-                    HStack(alignment: .top, spacing: Space.x3) {
-                        ProgressChallengesTile(samples: samples, now: now)
-                        ProgressShoesTile()
-                    }
-                    // Both tiles as tall as the taller one.
-                    .fixedSize(horizontal: false, vertical: true)
-                    ProgressFriendsCard(samples: samples, now: now)
+                    ChallengesSection(samples: samples, now: now)
+                    ShoesSection()
                 }
-                .padding(.horizontal, Space.x4)
-                .padding(.top, Space.x1)
-                .padding(.bottom, Space.x5)
+                .padding(Space.x4)
             }
             .background(Color.surface)
             .navigationTitle("Progress")

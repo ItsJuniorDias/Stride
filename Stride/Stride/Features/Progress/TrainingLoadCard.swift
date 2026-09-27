@@ -18,17 +18,14 @@ struct TrainingLoadCard: View {
         let trend = isLocked ? nil : PaceTrend.compute(samples: samples, now: now)
         VStack(alignment: .leading, spacing: Space.x3) {
             HStack(spacing: Space.x2) {
-                Text("Training load")
-                    .font(.headline)
-                    .foregroundStyle(.ink)
-                    .accessibilityAddTraits(.isHeader)
+                Text("Training load").font(.headline).foregroundStyle(.ink)
                 if isLocked { TagBadge("Pro") }
-                Spacer(minLength: 0)
+                Spacer()
                 if let load {
-                    StatusChip(chipTitle(load.state), indicator: chipColor(load.state), background: chipBackground(load.state))
+                    StatusChip(chipTitle(load.state), indicator: chipColor(load.state))
                 }
             }
-            .frame(minHeight: 28)
+            .accessibilityElement(children: .combine)
 
             if isLocked {
                 ProgressProTeaser(symbol: "chart.line.uptrend.xyaxis",
@@ -39,85 +36,47 @@ struct TrainingLoadCard: View {
                 Text("Run a few more times over the next weeks to see your training load and pace trend.")
                     .font(.subheadline)
                     .foregroundStyle(.inkMuted)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .raisedCard()
             } else {
-                if let load {
-                    loadSection(load)
-                } else {
-                    Text("Your training load shows up after three weeks of runs.")
-                        .font(.subheadline)
-                        .foregroundStyle(.inkMuted)
-                }
-                Group {
+                VStack(alignment: .leading, spacing: Space.x4) {
+                    if let load {
+                        loadSection(load)
+                    } else {
+                        Text("Your training load shows up after three weeks of runs.")
+                            .font(.subheadline)
+                            .foregroundStyle(.inkMuted)
+                    }
+                    Divider()
                     if let trend {
                         trendSection(trend)
                     } else {
                         Text("Your pace trend shows up after runs in \(PaceTrend.minimumWeeks) different weeks.")
                             .font(.subheadline)
                             .foregroundStyle(.inkMuted)
-                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
-                .padding(.top, Space.x4)
-                .overlay(alignment: .top) { Hairline() }
-                .padding(.top, Space.x1)
+                .raisedCard()
             }
         }
-        .raisedCard()
         .proPaywall($upsell)
     }
 
     // MARK: Load
 
     private func loadSection(_ load: TrainingLoad) -> some View {
-        // Room past the ramp limit, so a usual week sits left of center and a jump shows as one.
-        let scale = max(load.acute, load.chronic * 1.6, 1)
-        let low = load.chronic * TrainingLoad.easingLimit
-        let high = load.chronic * TrainingLoad.rampLimit
-        let range = "\(whole(low))–\(whole(high)) \(unit.distanceSymbol)"
-        return VStack(alignment: .leading, spacing: Space.x3) {
-            VStack(alignment: .leading, spacing: Space.x3) {
-                HStack(alignment: .top, spacing: Space.x3) {
-                    StatTile("Last 7 days", value: RunFormat.distance(load.acute, unit: unit, fractionDigits: 1),
-                             unit: unit.distanceSymbol, size: .medium)
-                    StatTile("Your usual week", value: RunFormat.distance(load.chronic, unit: unit, fractionDigits: 1),
-                             unit: unit.distanceSymbol, size: .medium)
-                }
-                TrackBar(progress: load.acute / scale,
-                         tint: load.state == .rampTooFast ? .warning : .lane,
-                         height: 12,
-                         marker: load.chronic / scale,
-                         band: (low / scale)...(high / scale),
-                         bandColor: .success,
-                         bandPlacement: .below)
-                    .padding(.top, Space.x1)
-                HStack(spacing: Space.x4) {
-                    HStack(spacing: 6) {
-                        Capsule().fill(Color.success).frame(width: 14, height: 4)
-                        Text("Safe build, \(range)")
-                    }
-                    HStack(spacing: 6) {
-                        RoundedRectangle(cornerRadius: 1.5).fill(Color.ink).frame(width: 3, height: 12)
-                        Text("Your usual week")
-                    }
-                }
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(.inkMuted)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
+        VStack(alignment: .leading, spacing: Space.x3) {
+            HStack(alignment: .top, spacing: Space.x4) {
+                MetricView("Last 7 days", value: RunFormat.distance(load.acute, unit: unit, fractionDigits: 1),
+                           unit: unit.distanceSymbol, size: .medium)
+                MetricView("Your usual week", value: RunFormat.distance(load.chronic, unit: unit, fractionDigits: 1),
+                           unit: unit.distanceSymbol, size: .medium)
             }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Last 7 days, \(RunFormat.distance(load.acute, unit: unit, fractionDigits: 1)) \(unit.distanceSymbol), against a usual week of \(RunFormat.distance(load.chronic, unit: unit, fractionDigits: 1)) \(unit.distanceSymbol). Safe build, \(whole(low)) to \(whole(high)) \(unit.distanceSymbol).")
+            LoadGauge(load: load)
             Text(message(load.state))
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.ink)
                 .fixedSize(horizontal: false, vertical: true)
         }
-    }
-
-    /// Meters as whole kilometers or miles.
-    private func whole(_ meters: Double) -> String {
-        Int((meters / unit.metersPerUnit).rounded()).formatted()
     }
 
     private func chipTitle(_ state: TrainingLoad.State) -> String {
@@ -135,15 +94,6 @@ struct TrainingLoadCard: View {
         case .steady: .success
         case .building: .lane
         case .rampTooFast: .warning
-        }
-    }
-
-    private func chipBackground(_ state: TrainingLoad.State) -> Color {
-        switch state {
-        case .easing: .surfaceSunken
-        case .steady: Color.success.opacity(0.16)
-        case .building: .laneSoft
-        case .rampTooFast: Color.warning.opacity(0.16)
         }
     }
 
@@ -166,46 +116,84 @@ struct TrainingLoadCard: View {
             ? "Your pace has held steady over the last \(trend.span) weeks."
             : "Your pace is \(seconds) s\(unit.paceSymbol) \(direction) than \(trend.span) weeks ago."
         let shortest = RunFormat.distance(PaceTrend.shortestRun, unit: unit, fractionDigits: unit == .metric ? 0 : 1)
-        return VStack(alignment: .leading, spacing: Space.x1) {
+        return VStack(alignment: .leading, spacing: Space.x2) {
             Text("Pace trend").metricLabelStyle()
             Text(sentence)
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(seconds > 0 && change < 0 ? Color.success : Color.ink)
                 .fixedSize(horizontal: false, vertical: true)
             PaceSparkline(trend: trend, unit: unit)
-                .frame(height: 56)
-                .padding(.top, Space.x2)
+                .frame(height: 64)
+                .padding(.top, Space.x1)
             HStack {
-                if let first = trend.weeks.first { Text(endLabel(first)) }
-                Spacer(minLength: Space.x2)
-                if let last = trend.weeks.last { Text(endLabel(last)) }
+                Text(weeksAgoLabel(trend.weeks.first?.weeksAgo ?? 0))
+                Spacer()
+                Text(weeksAgoLabel(trend.weeks.last?.weeksAgo ?? 0))
             }
             .font(.caption2)
-            .monospacedDigit()
             .foregroundStyle(.inkMuted)
             .accessibilityHidden(true)
-            Text("Weekly average of runs over \(shortest) \(unit.distanceSymbol). Up is faster.")
-                .font(.footnote.weight(.medium))
+            Text("Average pace per week, from runs of \(shortest) \(unit.distanceSymbol) or more.")
+                .font(.caption)
                 .foregroundStyle(.inkMuted)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 6)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// "8 weeks ago · 5'58"", "Last 7 days · 5'52"".
-    private func endLabel(_ week: PaceTrend.Week) -> String {
-        let when = switch week.weeksAgo {
+    private func weeksAgoLabel(_ weeksAgo: Int) -> String {
+        switch weeksAgo {
         case 0: "Last 7 days"
         case 1: "1 week ago"
-        default: "\(week.weeksAgo) weeks ago"
+        default: "\(weeksAgo) weeks ago"
         }
-        return "\(when) · \(RunFormat.pace(TrainingPaces.perUnit(week.pace, unit: unit)))"
     }
 }
 
-/// Average pace per week, straight from week to week, with the trend line through it and the latest
-/// week marked. Faster is up, like the pace chart.
+/// The last 7 days as a bar against the usual week (the tick), over the band where training
+/// builds without ramping too fast.
+private struct LoadGauge: View {
+    let load: TrainingLoad
+    private var barHeight: CGFloat { 10 }
+
+    var body: some View {
+        // Room past the ramp limit, so a usual week sits left of center and a jump shows as one.
+        let scale = max(load.acute, load.chronic * 1.6, 1)
+        GeometryReader { geo in
+            let width = geo.size.width
+            let low = width * fraction(load.chronic * TrainingLoad.easingLimit, of: scale)
+            let high = width * fraction(load.chronic * TrainingLoad.rampLimit, of: scale)
+            let usual = width * fraction(load.chronic, of: scale)
+            let done = width * fraction(load.acute, of: scale)
+            ZStack(alignment: .leading) {
+                ZStack(alignment: .leading) {
+                    Rectangle().fill(Color.surfaceSunken)
+                    Rectangle()
+                        .fill(Color.success.opacity(0.2))
+                        .frame(width: max(high - low, 0))
+                        .offset(x: low)
+                    Capsule()
+                        .fill(load.state == .rampTooFast ? Color.warning : Color.lane)
+                        .frame(width: load.acute > 0 ? max(done, barHeight) : 0)
+                }
+                .frame(height: barHeight)
+                .clipShape(Capsule())
+                Capsule()
+                    .fill(Color.ink)
+                    .frame(width: 3, height: barHeight + 8)
+                    .offset(x: min(max(usual - 1.5, 0), width - 3))
+            }
+            .frame(maxHeight: .infinity)
+        }
+        .frame(height: barHeight + 8)
+        .animation(.snappy, value: load.acute)
+        .accessibilityHidden(true)
+    }
+
+    private func fraction(_ meters: Double, of scale: Double) -> CGFloat {
+        CGFloat(min(max(meters / scale, 0), 1))
+    }
+}
+
+/// Average pace per week with the trend line through it. Faster is up, like the pace chart.
 private struct PaceSparkline: View {
     let trend: PaceTrend
     let unit: UnitSystem
@@ -220,6 +208,18 @@ private struct PaceSparkline: View {
         let high = (paces + fitted).max() ?? 1
         let padding = max((high - low) * 0.15, 3)
         Chart {
+            ForEach(trend.weeks) { week in
+                LineMark(x: .value("Week", week.start), y: .value("Pace", perUnit(week.pace)), series: .value("Line", "weeks"))
+                    .interpolationMethod(.monotone)
+                    .foregroundStyle(Color.lane)
+                    .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                    .accessibilityLabel(week.start.formatted(.dateTime.month(.abbreviated).day()))
+                    .accessibilityValue("\(RunFormat.pace(perUnit(week.pace))) \(unit.paceSymbol)")
+                PointMark(x: .value("Week", week.start), y: .value("Pace", perUnit(week.pace)))
+                    .foregroundStyle(Color.lane)
+                    .symbolSize(24)
+                    .accessibilityHidden(true)
+            }
             if let first, let last, first.weeksAgo != last.weeksAgo {
                 LineMark(x: .value("Week", first.start), y: .value("Pace", perUnit(trend.fitted(weeksAgo: first.weeksAgo))),
                          series: .value("Line", "trend"))
@@ -232,37 +232,13 @@ private struct PaceSparkline: View {
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
                     .accessibilityHidden(true)
             }
-            ForEach(trend.weeks) { week in
-                LineMark(x: .value("Week", week.start), y: .value("Pace", perUnit(week.pace)), series: .value("Line", "weeks"))
-                    .interpolationMethod(.linear)
-                    .foregroundStyle(Color.lane)
-                    .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-                    .accessibilityLabel(week.start.formatted(.dateTime.month(.abbreviated).day()))
-                    .accessibilityValue("\(RunFormat.pace(perUnit(week.pace))) \(unit.paceSymbol)")
-                if week.id == last?.id {
-                    PointMark(x: .value("Week", week.start), y: .value("Pace", perUnit(week.pace)))
-                        .symbol {
-                            Circle()
-                                .fill(Color.lane)
-                                .frame(width: 9, height: 9)
-                                .overlay { Circle().stroke(Color.surfaceRaised, lineWidth: 2) }
-                        }
-                        .accessibilityHidden(true)
-                } else {
-                    PointMark(x: .value("Week", week.start), y: .value("Pace", perUnit(week.pace)))
-                        .foregroundStyle(Color.lane)
-                        .symbolSize(28)
-                        .accessibilityHidden(true)
-                }
-            }
         }
         .chartXAxis(.hidden)
         .chartYAxis(.hidden)
         .chartYScale(domain: .automatic(includesZero: false, reversed: true, dataType: Double.self) {
             $0 = [low - padding, high + padding]
         })
-        // Room for the first and last points, which sit on the ends.
-        .chartXScale(range: .plotDimension(padding: 6))
+        .chartPlotStyle { $0.clipped() }
     }
 
     private func perUnit(_ secondsPerKilometer: Double) -> Double {
